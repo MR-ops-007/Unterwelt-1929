@@ -13,6 +13,7 @@ import {
   buyWeapon,
   cars,
   actionAvailability,
+  actionCost,
   checkRequirements,
   clearResult,
   combatAttack,
@@ -68,6 +69,7 @@ function App() {
   const [storyId, setStoryId] = useState<string | null>(null);
   const [startingStats, setStartingStats] = useState(() => rollStartingStats());
   const [recruitSearch, setRecruitSearch] = useState<string | null>(null);
+  const [hasSave, setHasSave] = useState(() => Boolean(localStorage.getItem(SAVE_KEY)));
   const currentTile = useMemo(
     () => game.map.find((tile) => tile.x === game.position.x && tile.y === game.position.y),
     [game.map, game.position.x, game.position.y],
@@ -152,7 +154,7 @@ function App() {
         `Anforderungen: ${formatRequirements(weapon.requiredStats)}`,
         `Seltenheit: ${weapon.rarity}`,
         weapon.description,
-        owned ? 'Status: bereits im Arsenal' : blocked.length ? `Fehlt: ${blocked.join(', ')}` : game.stats.money < weapon.price ? 'Fehlt: zu wenig echtes Geld, Blüten werden bei Bedarf riskant genutzt' : 'Status: kaufbar',
+        owned ? 'Status: bereits im Arsenal' : blocked.length ? `Fehlt: ${blocked.join(', ')}` : game.stats.money < weapon.price ? 'Fehlt: zu wenig Geld' : 'Status: kaufbar',
       ],
       confirmLabel: owned || blocked.length ? 'Nicht möglich' : 'Kaufen',
       onConfirm: (state) => owned || blocked.length ? state : buyWeapon(state, weaponId),
@@ -242,7 +244,8 @@ function App() {
       title: `${member.nickname} ausrüsten?`,
       lines: [
         `Neue Waffe: ${weapon.name}`,
-        `Bonus: Kampf +${weapon.combatBonus}, Schaden ${weapon.damage}, Reichweite ${weapon.range}`,
+        `Reichweite ${weapon.range}, Genauigkeit ${weapon.accuracy}%, Schaden ${weapon.damage}`,
+        'Verbessert Kämpfe und riskante Überfälle im Hintergrund.',
         'Ändert die Kampfkraft sofort.',
       ],
       confirmLabel: 'Ausrüsten',
@@ -295,6 +298,21 @@ function App() {
     confirmLabel: 'Monat beenden',
     onConfirm: processMonth,
   });
+
+  const handleSave = () => {
+    saveGame(game);
+    setHasSave(true);
+    setGame((prev) => ({
+      ...prev,
+      result: {
+        title: 'Spiel gespeichert',
+        lines: [
+          'Spiel gespeichert.',
+          `Zeitpunkt: ${new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}.`,
+        ],
+      },
+    }));
+  };
 
   if (game.screen === 'menu') {
     const loaded = loadGame();
@@ -391,8 +409,8 @@ function App() {
         </div>
         <div className="topActions">
           <button onClick={() => setGame((prev) => ({ ...prev, screen: prev.screen === 'gang' ? 'game' : 'gang' }))}>{game.screen === 'gang' ? 'Karte' : 'Bande'}</button>
-          <button onClick={() => saveGame(game)}>Speichern</button>
-          <button disabled={!localStorage.getItem(SAVE_KEY)} onClick={() => setGame(loadGame() ?? game)}>Laden</button>
+          <button onClick={handleSave}>Speichern</button>
+          <button disabled={!hasSave} onClick={() => setGame(loadGame() ?? game)}>Laden</button>
           <button onClick={askEndMonth}>Monat beenden</button>
         </div>
       </header>
@@ -426,8 +444,8 @@ function App() {
                       }}
                       title={`${building?.name ?? visual.name} / ${tile.district}`}
                     >
-                      <span>{playerHere ? '@' : tile.entranceFor ? getBuilding(tile.entranceFor).icon : tile.building ? '█' : visual.icon}</span>
-                      <small>{tile.entranceFor ? getBuilding(tile.entranceFor).short : ''}</small>
+                      <span>{playerHere ? '@' : tile.entranceFor ? '▣' : tile.building ? getBuilding(tile.building).icon : visual.icon}</span>
+                      <small>{tile.building ? getBuilding(tile.building).short : ''}</small>
                     </button>
                   );
                 })}
@@ -466,14 +484,14 @@ function App() {
                 <dt>Monat</dt><dd>{formatGameDate(game.month)}</dd>
                 <dt>Rang</dt><dd>{rank.name}</dd>
                 <dt>Punkte</dt><dd>{game.points}{rank.next ? ` / ${rank.next.points}` : ''}</dd>
-                <dt>Blüten</dt><dd>{formatMoney(game.stats.counterfeit)}</dd>
+                <dt>Blütenrisiko</dt><dd>{game.stats.counterfeit}/10</dd>
                 <dt>Gesundheit</dt><dd>{game.stats.health}</dd>
                 <dt>Stärke</dt><dd>{game.stats.strength}</dd>
                 <dt>Intelligenz</dt><dd>{game.stats.intelligence}</dd>
                 <dt>Ruf</dt><dd>{game.stats.reputation} ({effective.reputation} effektiv)</dd>
                 <dt>Brutalität</dt><dd>{game.stats.brutality} ({effective.brutality} effektiv)</dd>
-                <dt>Kampfwert</dt><dd>{Math.round(effective.combat)}</dd>
-                <dt>Einschüchterung</dt><dd>{Math.round(effective.intimidation)}</dd>
+                <dt>Kampfwert</dt><dd title="Stärke + Brutalität + Waffen + Bande">{Math.round(effective.combat)}</dd>
+                <dt>Einschüchterung</dt><dd title="Brutalität + Ruf + passende Bande/Waffe">{Math.round(effective.intimidation)}</dd>
                 <dt>Fahndung</dt><dd>{game.stats.wanted}</dd>
                 <dt>Gefahr</dt><dd>{game.stats.danger}</dd>
                 <dt>Pass</dt><dd>{game.stats.passport ? 'Ja' : 'Nein'}</dd>
@@ -497,7 +515,7 @@ function App() {
             <div className="modalLines">
               <p>{game.policeCheck.reason}</p>
               <p>Risiko: {Math.round(game.policeCheck.risk * 100)}%</p>
-              <p>Fahndung: {game.stats.wanted}, Blüten: {formatMoney(game.stats.counterfeit)}, Pass: {game.stats.passport ? 'Ja' : 'Nein'}</p>
+              <p>Fahndung: {game.stats.wanted}, Blütenrisiko: {game.stats.counterfeit}/10, Pass: {game.stats.passport ? 'Ja' : 'Nein'}</p>
             </div>
             <div className="modalButtons">
               <button onClick={() => setGame((prev) => resolvePoliceCheck(prev, 'calm'))}>Ruhig bleiben</button>
@@ -594,12 +612,13 @@ function ActionList({ actions: list, game, askAction }: { actions: ActionConfig[
     <div className="cardGrid">
       {list.map((action) => {
         const blocked = actionAvailability(game, action);
+        const cost = actionCost(game, action);
         return (
           <article className="choiceCard" key={action.id}>
             <h3>{action.name}</h3>
             <p>{action.effect}</p>
             <ul>
-              <li>{action.cost ? `Kosten ${formatMoney(action.cost)}` : 'Keine Kosten'}, Schritte {action.stepCost ?? 1}</li>
+              <li>{cost ? `Kosten ${formatMoney(cost)}` : 'Keine Kosten'}, Schritte {action.stepCost ?? 1}</li>
               <li>{action.reward ? `Beute ${formatMoney(action.reward[0])}-${formatMoney(action.reward[1])}` : `Effekt: ${action.effect}`}</li>
               <li>Risiko {action.risk}, Polizei {action.policeRisk >= 0 ? '+' : ''}{action.policeRisk}</li>
               <li>Rang {action.rank ?? 'Anfänger'}, Punkte +{action.pointEffect ?? 0}</li>

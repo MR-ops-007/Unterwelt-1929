@@ -260,8 +260,8 @@ h3 {
 }
 
 .buildingTile {
-  border: 1px solid #f3f3ff;
-  background: #9a5f69;
+  border: 1px solid #ffd84c;
+  background: #3a3a54;
 }
 
 .buildingBlockTile {
@@ -271,12 +271,20 @@ h3 {
 }
 
 .kind-entrance {
-  background: #9a5f69;
+  background: #3a3a54;
 }
 
 .buildingTile span {
   color: #ffd84c;
-  font-size: clamp(0.78rem, 1.35vw, 1.15rem);
+  font-size: clamp(0.62rem, 1vw, 0.9rem);
+}
+
+.buildingBlockTile span {
+  color: #ffd84c;
+}
+
+.buildingBlockTile small {
+  color: #f3f3ff;
 }
 
 .playerTile {
