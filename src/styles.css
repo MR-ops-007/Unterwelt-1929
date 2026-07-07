@@ -1,0 +1,599 @@
+:root {
+  color-scheme: dark;
+  font-family: "Courier New", Courier, monospace;
+  background: #080814;
+  color: #b8ff7a;
+  font-synthesis: none;
+  text-rendering: optimizeSpeed;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.035) 50%, transparent 50%) 0 0 / 100% 4px,
+    radial-gradient(circle at top left, rgba(255, 216, 76, 0.11), transparent 28rem),
+    #080814;
+}
+
+button,
+select {
+  font: inherit;
+}
+
+button {
+  min-height: 2.25rem;
+  border: 2px solid #8ee35f;
+  border-radius: 0;
+  background: #11112b;
+  color: #eaffc7;
+  cursor: pointer;
+  text-transform: uppercase;
+  box-shadow: inset -3px -3px 0 #05050e, inset 3px 3px 0 rgba(255, 255, 255, 0.12);
+}
+
+button:hover:not(:disabled),
+button:focus-visible {
+  background: #263d1f;
+  outline: 2px solid #ffd84c;
+  outline-offset: 2px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+select {
+  min-height: 2.25rem;
+  border: 2px solid #70a6ff;
+  border-radius: 0;
+  background: #05050e;
+  color: #f3f3ff;
+  padding: 0.35rem;
+}
+
+.shell {
+  width: min(1560px, 100%);
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.menuShell {
+  min-height: 100vh;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2rem;
+}
+
+.titleBlock {
+  width: min(850px, 100%);
+  text-align: center;
+  border: 4px double #ffd84c;
+  padding: 2rem;
+  background: #10102a;
+}
+
+.rollBox {
+  display: grid;
+  gap: 0.55rem;
+  margin: 1rem auto 0;
+  padding: 0.75rem;
+  border: 2px solid #70a6ff;
+  background: #0d1624;
+}
+
+.kicker {
+  margin: 0 0 0.5rem;
+  color: #70a6ff;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 0.75rem;
+  color: #ffd84c;
+  font-size: clamp(2.4rem, 8vw, 5.6rem);
+  line-height: 0.95;
+}
+
+h2 {
+  margin-bottom: 0.7rem;
+  color: #ffd84c;
+  font-size: 1.15rem;
+}
+
+h3 {
+  margin-bottom: 0.35rem;
+  color: #70a6ff;
+  font-size: 1rem;
+}
+
+.menuButtons,
+.topActions,
+.unitList,
+.modalButtons,
+.gangActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 2px solid #70a6ff;
+  padding: 0.75rem;
+  background: #11112b;
+  color: #f3f3ff;
+}
+
+.topbar strong {
+  color: #ffd84c;
+}
+
+.dashboard {
+  display: grid;
+  grid-template-columns: minmax(720px, 1.35fr) minmax(360px, 0.8fr) minmax(260px, 0.55fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.mapPanel,
+.panel {
+  border: 2px solid #8ee35f;
+  background: rgba(10, 10, 30, 0.94);
+  padding: 0.8rem;
+}
+
+.cityGrid {
+  display: grid;
+  gap: 0.08rem;
+  border: 4px solid #1b1b35;
+  background: #202040;
+  padding: 0.25rem;
+}
+
+.tile {
+  position: relative;
+  aspect-ratio: 1;
+  min-height: auto;
+  padding: 0.1rem;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  place-items: center;
+  border: 0;
+  color: #70a6ff;
+  overflow: hidden;
+}
+
+.tile::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(rgba(0, 0, 0, 0.16) 1px, transparent 1px);
+  background-size: 6px 6px;
+  pointer-events: none;
+}
+
+.tile span,
+.tile small {
+  position: relative;
+  z-index: 1;
+}
+
+.tile span {
+  color: #f7e26b;
+  font-size: clamp(0.62rem, 1.15vw, 1rem);
+  line-height: 1;
+  text-shadow: 2px 2px 0 #080814;
+}
+
+.tile small {
+  max-width: 100%;
+  color: #eaffc7;
+  font-size: 0.45rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 1px 1px 0 #080814;
+}
+
+.district-altstadt {
+  background: #7d6677;
+}
+
+.district-hafenviertel {
+  background: #4f6d73;
+}
+
+.district-industriegebiet {
+  background: #756d64;
+}
+
+.district-villenviertel {
+  background: #5b7b5a;
+}
+
+.district-rotlichtgasse {
+  background: #8a5566;
+}
+
+.district-bahnhofsviertel {
+  background: #696987;
+}
+
+.district-polizeibezirk {
+  background: #5c6c94;
+}
+
+.kind-alley {
+  filter: brightness(0.82);
+}
+
+.kind-park {
+  background: #3f7a55;
+}
+
+.kind-warehouse,
+.kind-yard {
+  filter: saturate(0.7);
+}
+
+.kind-wall {
+  background: #363648;
+}
+
+.buildingTile {
+  border: 1px solid #f3f3ff;
+  background: #9a5f69;
+}
+
+.buildingTile span {
+  color: #ffd84c;
+  font-size: clamp(0.78rem, 1.35vw, 1.15rem);
+}
+
+.playerTile {
+  border: 1px solid #ffd84c;
+  background: #302010;
+  animation: blink 0.9s steps(2, end) infinite;
+}
+
+.playerTile span {
+  color: #ff6b6b;
+  font-size: clamp(0.85rem, 1.5vw, 1.25rem);
+}
+
+@keyframes blink {
+  50% {
+    outline: 3px solid #ff6b6b;
+  }
+}
+
+.kind-road {
+  background: #242437;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.8rem;
+  margin-top: 0.75rem;
+  color: #f3f3ff;
+  font-size: 0.78rem;
+}
+
+.bottomStatus {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.25rem 0.6rem;
+  margin-top: 0.75rem;
+  border: 2px solid #70a6ff;
+  padding: 0.45rem;
+  background: #11112b;
+  color: #f3f3ff;
+  font-size: 0.78rem;
+}
+
+.legend b {
+  color: #ffd84c;
+}
+
+.hint {
+  margin-top: 0.75rem;
+  color: #f3f3ff;
+  font-size: 0.85rem;
+}
+
+.actionPanel {
+  max-height: calc(100vh - 7rem);
+  overflow: auto;
+}
+
+.cardGrid {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0.7rem 0 1rem;
+}
+
+.trainingRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+}
+
+.choiceCard {
+  border: 1px solid #314f43;
+  background: #0d1624;
+  padding: 0.65rem;
+}
+
+.choiceCard p {
+  color: #f3f3ff;
+  font-size: 0.88rem;
+}
+
+.choiceCard ul {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0 0 0.65rem;
+  padding: 0;
+  list-style: none;
+  color: #b8ff7a;
+  font-size: 0.82rem;
+}
+
+.choiceCard li::before {
+  content: "> ";
+  color: #ffd84c;
+}
+
+.recruitCard h3 span,
+.gangCard h3 span {
+  color: #ffd84c;
+}
+
+.statsPanel dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.35rem 0.8rem;
+  margin: 0;
+}
+
+.statsPanel dt {
+  color: #70a6ff;
+}
+
+.statsPanel dd {
+  margin: 0;
+  color: #ffd84c;
+  text-align: right;
+}
+
+.lowerGrid,
+.combatLayout,
+.gangScreen {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.gangRows,
+.logPanel {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.memberRow,
+.gangCard {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.75rem;
+  align-items: start;
+  border: 1px solid #314f43;
+  padding: 0.6rem;
+  background: #0d1624;
+}
+
+.memberRow div:not(.portrait),
+.gangDetails {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.memberRow span,
+.gangDetails p {
+  margin: 0;
+  color: #f3f3ff;
+  font-size: 0.84rem;
+}
+
+.portrait {
+  display: grid;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border: 2px solid #ffd84c;
+  background: #2d1831;
+  color: #ffd84c;
+}
+
+.portrait.large {
+  width: 4rem;
+  height: 4rem;
+  font-size: 1.35rem;
+}
+
+.statStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.statStrip span {
+  border: 1px solid #70a6ff;
+  padding: 0.15rem 0.3rem;
+  color: #eaffc7;
+  background: #11112b;
+}
+
+.storyText {
+  border-left: 3px solid #ffd84c;
+  padding-left: 0.7rem;
+}
+
+.logPanel p {
+  margin: 0;
+  color: #f3f3ff;
+}
+
+.logPanel span {
+  color: #ffd84c;
+}
+
+.combatGrid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.4rem;
+  border: 2px solid #ffd84c;
+  padding: 0.6rem;
+  background: #0d1624;
+}
+
+.combatCell {
+  aspect-ratio: 1;
+  min-height: auto;
+  border-color: #314f43;
+}
+
+.combatCell.ally {
+  border-color: #8ee35f;
+  color: #b8ff7a;
+}
+
+.combatCell.enemy {
+  border-color: #ff6b6b;
+  color: #ff9d9d;
+}
+
+.combatCell.obstacle {
+  border-color: #ffd84c;
+  background: #3b2f2f;
+  color: #ffd84c;
+}
+
+.selectedRow {
+  border-color: #ffd84c;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.modal {
+  width: min(620px, 100%);
+  border: 4px double #ffd84c;
+  background: #10102a;
+  padding: 1rem;
+  box-shadow: 0 0 0 4px #080814;
+}
+
+.modalLines {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.modalLines p {
+  margin: 0;
+  color: #f3f3ff;
+}
+
+.dangerText {
+  color: #ff9d9d;
+}
+
+.modalButtons {
+  justify-content: flex-end;
+}
+
+@media (max-width: 1180px) {
+  .dashboard,
+  .lowerGrid,
+  .combatLayout,
+  .gangScreen {
+    grid-template-columns: 1fr;
+  }
+
+  .actionPanel {
+    max-height: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .shell {
+    padding: 0.6rem;
+  }
+
+  .topbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .cityGrid {
+    gap: 0.06rem;
+  }
+
+  .tile small {
+    display: none;
+  }
+
+  .tile span {
+    font-size: 0.62rem;
+  }
+
+  .bottomStatus {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .memberRow,
+  .gangCard {
+    grid-template-columns: 1fr;
+  }
+
+  .menuButtons,
+  .topActions,
+  .unitList,
+  .modalButtons,
+  .gangActions {
+    flex-direction: column;
+  }
+}

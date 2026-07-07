@@ -1,0 +1,779 @@
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ActionConfig,
+  ActionResult,
+  CarId,
+  GameState,
+  WeaponId,
+  actions,
+  activeGang,
+  buildings,
+  buyCar,
+  buyWeapon,
+  cars,
+  actionAvailability,
+  checkRequirements,
+  clearResult,
+  combatAttack,
+  combatEnemyTurn,
+  combatMove,
+  describeAction,
+  equipMember,
+  finishCombat,
+  fireMember,
+  formatMoney,
+  formatGameDate,
+  getAction,
+  getBuilding,
+  getCar,
+  getEffectiveStats,
+  getWeapon,
+  getRank,
+  healMember,
+  hireRecruit,
+  loadGame,
+  movePlayer,
+  newGame,
+  processMonth,
+  recruitTemplates,
+  rollStartingStats,
+  resolvePoliceCheck,
+  resolveAction,
+  saveGame,
+  tileVisuals,
+  trainMember,
+  trainPlayer,
+  weapons,
+  MAP_WIDTH,
+  SAVE_KEY,
+} from './game';
+
+type Pending =
+  { title: string; lines: string[]; danger?: string; confirmLabel?: string; onConfirm: (state: GameState) => GameState | ActionResult };
+
+const statShort: Array<[string, string]> = [
+  ['strength', 'ST'],
+  ['intelligence', 'IN'],
+  ['brutality', 'BR'],
+  ['shooting', 'SCH'],
+  ['driving', 'FA'],
+  ['loyalty', 'LO'],
+];
+
+function App() {
+  const [game, setGame] = useState<GameState>(() => loadGame() ?? { ...newGame(), screen: 'menu' });
+  const [pending, setPending] = useState<Pending | null>(null);
+  const [storyId, setStoryId] = useState<string | null>(null);
+  const [startingStats, setStartingStats] = useState(() => rollStartingStats());
+  const [recruitSearch, setRecruitSearch] = useState<string | null>(null);
+  const currentTile = useMemo(
+    () => game.map.find((tile) => tile.x === game.position.x && tile.y === game.position.y),
+    [game.map, game.position.x, game.position.y],
+  );
+  const currentBuilding = currentTile?.building ? getBuilding(currentTile.building) : undefined;
+  const effective = getEffectiveStats(game);
+  const rank = getRank(game.points);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (pending) {
+        if (event.code === 'Escape') setPending(null);
+        return;
+      }
+
+      if (game.screen === 'combat' && game.combat?.selectedId) {
+        const selectedId = game.combat.selectedId;
+        const delta = keyDelta(event.code);
+        if (delta) {
+          event.preventDefault();
+          setGame((prev) => prev.combat ? { ...prev, combat: combatMove(prev.combat, selectedId, delta[0], delta[1]) } : prev);
+        }
+        return;
+      }
+
+      if (game.screen !== 'game' && game.screen !== 'gang') return;
+      const delta = keyDelta(event.code);
+      if (delta && game.screen === 'game') {
+        event.preventDefault();
+        setGame((prev) => movePlayer(prev, delta[0], delta[1]));
+      }
+      if (event.code === 'KeyB') setGame((prev) => ({ ...prev, screen: prev.screen === 'gang' ? 'game' : 'gang' }));
+      if (event.code === 'KeyE') askEndMonth();
+      if (event.code === 'KeyQ') saveGame(game);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [game, pending]);
+
+  const startNew = () => {
+    localStorage.removeItem(SAVE_KEY);
+    setGame(newGame(startingStats));
+  };
+
+  const confirm = (nextPending: Pending) => setPending(nextPending);
+
+  const runPending = () => {
+    if (!pending) return;
+    setGame((prev) => {
+      const result = pending.onConfirm(prev);
+      if (isActionResult(result)) return result.combat ? { ...result.state, screen: 'combat', combat: result.combat } : result.state;
+      return result;
+    });
+    setPending(null);
+  };
+
+  const askAction = (action: ActionConfig) => {
+    const blocked = actionAvailability(game, action);
+    confirm({
+      title: `${action.name}?`,
+      lines: [
+        ...describeAction(game, action),
+        blocked.length ? `Status: ${blocked.join(', ')}` : 'Status: ausführbar',
+      ],
+      danger: action.failure,
+      confirmLabel: blocked.length ? 'Nicht möglich' : 'Bestätigen',
+      onConfirm: (state) => blocked.length ? state : resolveAction(state, action.id),
+    });
+  };
+
+  const askWeapon = (weaponId: WeaponId) => {
+    const weapon = getWeapon(weaponId);
+    const blocked = checkRequirements(game, weapon.requiredStats);
+    const owned = game.arsenal.includes(weaponId);
+    confirm({
+      title: `${weapon.name} kaufen?`,
+      lines: [
+        `Preis: ${formatMoney(weapon.price)}`,
+        `Aktuelles Geld: ${formatMoney(game.stats.money)}`,
+        `Danach: ${formatMoney(game.stats.money - weapon.price)}`,
+        `Bonus: Kampf +${weapon.combatBonus}, Brutalität +${weapon.brutalityBonus}, Einschüchterung +${weapon.intimidationBonus}, Ruf +${weapon.reputationBonus}`,
+        `Reichweite: ${weapon.range}, Genauigkeit: ${weapon.accuracy}%, Schaden: ${weapon.damage}`,
+        `Seltenheit: ${weapon.rarity}`,
+        weapon.description,
+        owned ? 'Status: bereits im Arsenal' : blocked.length ? `Fehlt: ${blocked.join(', ')}` : game.stats.money < weapon.price ? 'Fehlt: zu wenig echtes Geld, Blüten werden bei Bedarf riskant genutzt' : 'Status: kaufbar',
+      ],
+      confirmLabel: owned || blocked.length ? 'Nicht möglich' : 'Kaufen',
+      onConfirm: (state) => owned || blocked.length ? state : buyWeapon(state, weaponId),
+    });
+  };
+
+  const askCar = (carId: CarId) => {
+    const car = getCar(carId);
+    const blocked = checkRequirements(game, [{ stat: 'reputation', min: car.reputationRequirement }, ...car.requiredStats]);
+    const owned = game.car === carId;
+    confirm({
+      title: `${car.name} kaufen?`,
+      lines: [
+        `Preis: ${formatMoney(car.price)}`,
+        `Bewegung danach: ${car.movementPoints} Schritte pro Monat`,
+        `Anforderung: Ruf ${car.reputationRequirement}${car.requiredStats.length ? ', weitere Werte' : ''}`,
+        `Polizeirisiko: ${car.policeRiskModifier}`,
+        `Effekt: ${car.specialEffect}`,
+        car.description,
+        owned ? 'Status: bereits aktiv' : blocked.length ? `Fehlt: ${blocked.join(', ')}` : `Danach: ${formatMoney(game.stats.money - car.price)}`,
+      ],
+      confirmLabel: owned || blocked.length ? 'Nicht möglich' : 'Kaufen',
+      onConfirm: (state) => owned || blocked.length ? state : buyCar(state, carId),
+    });
+  };
+
+  const askRecruit = (templateId: string) => {
+    const recruit = recruitTemplates.find((item) => item.templateId === templateId);
+    if (!recruit) return;
+    const blocked = checkRequirements(game, recruit.requirements);
+    const hired = game.gang.some((member) => member.templateId === templateId && member.status !== 'tot');
+    confirm({
+      title: `${recruit.nickname} aufnehmen?`,
+      lines: [
+        `${recruit.name} / ${recruit.role}`,
+        `Geschlecht: ${recruit.sex}, Startwaffe: ${getWeapon(recruit.weapon).name}`,
+        `Handgeld: ${formatMoney(recruit.cost)}, Unterhalt: ${formatMoney(recruit.upkeep)} pro Monat`,
+        `Werte: ST ${recruit.strength}, IN ${recruit.intelligence}, BR ${recruit.brutality}, SCH ${recruit.shooting}, FA ${recruit.driving}, LO ${recruit.loyalty}`,
+        `Spezial: ${recruit.special}`,
+        `Schwäche: ${recruit.weakness}`,
+        recruit.story,
+        hired ? 'Status: bereits in Deiner Bande' : blocked.length ? `Fehlt: ${blocked.join(', ')}` : 'Status: anwerbbar',
+      ],
+      confirmLabel: hired || blocked.length ? 'Nicht möglich' : 'Aufnehmen',
+      onConfirm: (state) => hired || blocked.length ? state : hireRecruit(state, templateId),
+    });
+  };
+
+  const searchRecruit = (templateId: string) => {
+    const lines = [
+      'Du schaust Dich in der Kneipe um...',
+      'Der Wirt nickt Dir kaum merklich zu...',
+      Math.random() < 0.5 ? 'Da scheint sich eine Dame für Dich zu interessieren...' : 'Ein finsterer Kerl beobachtet Dich aus der Ecke...',
+    ];
+    setRecruitSearch(lines.join('\n'));
+    window.setTimeout(() => {
+      setRecruitSearch(null);
+      askRecruit(templateId);
+    }, 650);
+  };
+
+  const askTrainPlayer = (stat: 'strength' | 'intelligence' | 'brutality') => {
+    confirm({
+      title: `${stat === 'strength' ? 'Stärke' : stat === 'intelligence' ? 'Intelligenz' : 'Brutalität'} trainieren?`,
+      lines: ['Kosten: $600', 'Schrittkosten: 2', 'Verbessert den Wert um +4.', 'Schaltet bessere Waffen leichter frei.'],
+      confirmLabel: 'Trainieren',
+      onConfirm: (state) => trainPlayer(state, stat),
+    });
+  };
+
+  const askEquip = (memberId: string, weaponId: WeaponId) => {
+    const member = game.gang.find((item) => item.id === memberId);
+    const weapon = getWeapon(weaponId);
+    if (!member) return;
+    confirm({
+      title: `${member.nickname} ausrüsten?`,
+      lines: [
+        `Neue Waffe: ${weapon.name}`,
+        `Bonus: Kampf +${weapon.combatBonus}, Schaden ${weapon.damage}, Reichweite ${weapon.range}`,
+        'Ändert die Kampfkraft sofort.',
+      ],
+      confirmLabel: 'Ausrüsten',
+      onConfirm: (state) => equipMember(state, memberId, weaponId),
+    });
+  };
+
+  const askTrain = (memberId: string, stat: 'strength' | 'intelligence' | 'brutality' | 'shooting' | 'driving') => {
+    const member = game.gang.find((item) => item.id === memberId);
+    if (!member) return;
+    confirm({
+      title: `${member.nickname} trainieren?`,
+      lines: ['Kosten: $750', `Verbessert ${stat} um +1.`, `Aktuelles Geld: ${formatMoney(game.stats.money)}`],
+      confirmLabel: 'Trainieren',
+      onConfirm: (state) => trainMember(state, memberId, stat),
+    });
+  };
+
+  const askFire = (memberId: string) => {
+    const member = game.gang.find((item) => item.id === memberId);
+    if (!member) return;
+    confirm({
+      title: `${member.nickname} feuern?`,
+      lines: [`${member.name} verlässt die Bande.`, `Du sparst ${formatMoney(member.upkeep)} Unterhalt pro Monat.`],
+      danger: 'Das kann später fehlen.',
+      confirmLabel: 'Feuern',
+      onConfirm: (state) => fireMember(state, memberId),
+    });
+  };
+
+  const askHealMember = (memberId: string) => {
+    const member = game.gang.find((item) => item.id === memberId);
+    if (!member) return;
+    confirm({
+      title: `${member.nickname} behandeln lassen?`,
+      lines: ['Kosten: $900', 'Status wird wieder aktiv.', `Aktuelles Geld: ${formatMoney(game.stats.money)}`],
+      confirmLabel: 'Behandeln',
+      onConfirm: (state) => healMember(state, memberId),
+    });
+  };
+
+  const askEndMonth = () => confirm({
+    title: 'Monat beenden?',
+    lines: [
+      `Nächster Monat: ${formatGameDate(game.month + 1)}`,
+      `Bewegung wird auf ${getCar(game.car).movementPoints} zurückgesetzt.`,
+      `Unterhalt: ${formatMoney(game.gang.reduce((sum, member) => sum + (member.status !== 'tot' ? member.upkeep : 0), 0))}`,
+      'Zufallsereignisse, Fahndung und Loyalität werden ausgewertet.',
+    ],
+    confirmLabel: 'Monat beenden',
+    onConfirm: processMonth,
+  });
+
+  if (game.screen === 'menu') {
+    const loaded = loadGame();
+    return (
+      <main className="shell menuShell">
+        <section className="titleBlock">
+          <p className="kicker">C64 CRIME MANAGEMENT</p>
+          <h1>UNTERWELT 1929</h1>
+          <p>Chicago, 1925. Straßen, Blüten, Fluchtwagen und Leute, die teuer werden, wenn sie loyal bleiben.</p>
+          <div className="rollBox">
+            <h2>Startwerte</h2>
+            <p>Intelligenz {startingStats.intelligence} / Stärke {startingStats.strength} / Brutalität {startingStats.brutality}</p>
+            <button onClick={() => setStartingStats(rollStartingStats())}>Neu würfeln</button>
+          </div>
+        </section>
+        <div className="menuButtons">
+          <button onClick={startNew}>Neues Spiel</button>
+          <button disabled={!loaded} onClick={() => loaded && setGame(loaded)}>Spiel laden</button>
+        </div>
+      </main>
+    );
+  }
+
+  if (game.screen === 'won' || game.screen === 'lost') {
+    return (
+      <main className="shell menuShell">
+        <section className="titleBlock">
+          <p className="kicker">{game.screen === 'won' ? 'SIEG' : 'ENDE'}</p>
+          <h1>{game.screen === 'won' ? 'BOSS DER UNTERWELT' : 'DIE STADT HAT GEWONNEN'}</h1>
+          <p>{game.gameOverReason ?? (game.screen === 'won' ? 'Geld, Ruf und Bande reichen. Die Stadt gehört Dir.' : 'Ein klarer Grund fehlt. Das sollte nicht passieren.')}</p>
+        </section>
+        <button onClick={startNew}>Neu beginnen</button>
+      </main>
+    );
+  }
+
+  if (game.screen === 'combat' && game.combat) {
+    const selected = game.combat.allies.find((ally) => ally.id === game.combat?.selectedId);
+    return (
+      <main className="shell">
+        <header className="topbar">
+          <strong>{game.combat.title}</strong>
+          <button onClick={() => setGame((prev) => prev.combat ? finishCombat(prev, prev.combat) : prev)}>Kampf beenden</button>
+        </header>
+        <section className="combatLayout">
+          <div className="combatGrid">
+            {Array.from({ length: 30 }, (_, index) => {
+              const x = index % 6;
+              const y = Math.floor(index / 6);
+              const ally = game.combat?.allies.find((unit) => unit.x === x && unit.y === y);
+              const enemy = game.combat?.enemies.find((unit) => unit.x === x && unit.y === y);
+              const obstacle = game.combat?.obstacles.some((item) => item.x === x && item.y === y);
+              return (
+                <button key={`${x}-${y}`} className={`combatCell ${ally ? 'ally' : ''} ${enemy ? 'enemy' : ''} ${obstacle ? 'obstacle' : ''}`} onClick={() => ally && setGame((prev) => prev.combat ? { ...prev, combat: { ...prev.combat, selectedId: ally.id } } : prev)}>
+                  {ally ? ally.nickname.slice(0, 2).toUpperCase() : enemy ? '!!' : obstacle ? '##' : '..'}
+                </button>
+              );
+            })}
+          </div>
+          <aside className="panel">
+            <h2>Kommando</h2>
+            <p>{game.combat.message}</p>
+            <div className="unitList">
+              {game.combat.allies.map((ally) => (
+                <button key={ally.id} className={ally.id === game.combat?.selectedId ? 'selectedRow' : ''} onClick={() => setGame((prev) => prev.combat ? { ...prev, combat: { ...prev.combat, selectedId: ally.id } } : prev)}>
+                  {ally.nickname} / {getWeapon(ally.weapon).name}
+                </button>
+              ))}
+            </div>
+            <h3>Ziele</h3>
+            <div className="unitList">
+              {game.combat.enemies.map((enemy) => (
+                <button key={enemy.id} disabled={!selected || game.combat?.phase !== 'player'} onClick={() => selected && setGame((prev) => prev.combat ? { ...prev, combat: combatAttack(prev.combat, selected.id, enemy.id) } : prev)}>
+                  {enemy.name} HP {Math.ceil(enemy.health)}
+                </button>
+              ))}
+            </div>
+            {game.combat.phase === 'enemy' && <button onClick={() => setGame((prev) => prev.combat ? { ...prev, combat: combatEnemyTurn(prev.combat) } : prev)}>Gegnerzug</button>}
+            {game.combat.phase === 'finished' && <button onClick={() => setGame((prev) => prev.combat ? finishCombat(prev, prev.combat) : prev)}>Ausgang abrechnen</button>}
+          </aside>
+        </section>
+      </main>
+    );
+  }
+
+  const buildingActions = currentBuilding ? actions.filter((action) => currentBuilding.actions.includes(action.id)) : [];
+
+  return (
+    <main className="shell">
+      <header className="topbar">
+        <div>
+          <strong>Unterwelt 1929</strong>
+          <span> {formatGameDate(game.month)} / {rank.name} / Punkte {game.points} / Bewegung {game.stepsLeft}/{getCar(game.car).movementPoints}</span>
+        </div>
+        <div className="topActions">
+          <button onClick={() => setGame((prev) => ({ ...prev, screen: prev.screen === 'gang' ? 'game' : 'gang' }))}>{game.screen === 'gang' ? 'Karte' : 'Bande'}</button>
+          <button onClick={() => saveGame(game)}>Speichern</button>
+          <button disabled={!localStorage.getItem(SAVE_KEY)} onClick={() => setGame(loadGame() ?? game)}>Laden</button>
+          <button onClick={askEndMonth}>Monat beenden</button>
+        </div>
+      </header>
+
+      {game.screen === 'gang' ? (
+        <GangScreen
+          game={game}
+          storyId={storyId}
+          setStoryId={setStoryId}
+          askEquip={askEquip}
+          askTrain={askTrain}
+          askFire={askFire}
+          askHealMember={askHealMember}
+        />
+      ) : (
+        <>
+          <section className="dashboard">
+            <div className="mapPanel">
+              <div className="cityGrid" style={{ gridTemplateColumns: `repeat(${MAP_WIDTH}, 1fr)` }}>
+                {game.map.map((tile) => {
+                  const building = tile.building ? getBuilding(tile.building) : undefined;
+                  const playerHere = tile.x === game.position.x && tile.y === game.position.y;
+                  const visual = tileVisuals[tile.kind];
+                  return (
+                    <button
+                      key={tile.id}
+                      className={`tile district-${districtClass(tile.district)} kind-${tile.kind} ${building ? 'buildingTile' : ''} ${playerHere ? 'playerTile' : ''}`}
+                      onClick={() => {
+                        const distance = Math.abs(tile.x - game.position.x) + Math.abs(tile.y - game.position.y);
+                        if (distance === 1) setGame(movePlayer(game, tile.x - game.position.x, tile.y - game.position.y));
+                      }}
+                      title={`${building?.name ?? visual.name} / ${tile.district}`}
+                    >
+                      <span>{playerHere ? '@' : building?.icon ?? visual.icon}</span>
+                      <small>{building?.short ?? ''}</small>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="legend">
+                {buildings.map((building) => <span key={building.id}><b>{building.icon}</b> {building.name}</span>)}
+              </div>
+              <div className="bottomStatus">
+                <span>Spieler: Anfänger</span>
+                <span>Monat: {formatGameDate(game.month)}</span>
+                <span>Rang: {rank.name}</span>
+                <span>Geld: {formatMoney(game.stats.money)}</span>
+                <span>Schritte: {game.stepsLeft}</span>
+                <span>Fahndung: {game.stats.wanted}</span>
+                <span>Auto: {getCar(game.car).name}</span>
+                <span>Waffe: {getWeapon(game.arsenal[game.arsenal.length - 1] ?? 'none').name}</span>
+              </div>
+              <div className="hint">Tasten: WASD/Pfeile bewegen, B Bande, E Monat beenden, Q speichern.</div>
+            </div>
+
+            <aside className="panel actionPanel">
+              <p className="kicker">{currentTile?.district ?? 'Stadt'}</p>
+              <h2>{currentBuilding?.name ?? tileVisuals[currentTile?.kind ?? 'street'].name}</h2>
+              <p>{currentBuilding?.description ?? 'Gassen, Mauern, Laternen. Nicht jeder Ort ist ein Geschäft, aber jeder Ort erzählt etwas.'}</p>
+              <ActionList actions={buildingActions} game={game} askAction={askAction} />
+              {currentBuilding?.id === 'weapons' && <WeaponShop game={game} askWeapon={askWeapon} askTrainPlayer={askTrainPlayer} />}
+              {currentBuilding?.id === 'cars' && <CarShop game={game} askCar={askCar} />}
+              {currentBuilding?.id === 'kneipe' && <RecruitList game={game} askRecruit={searchRecruit} premium={game.hotelRoom} />}
+              {currentBuilding?.id === 'hotel' && <RecruitList game={game} askRecruit={askRecruit} premium />}
+            </aside>
+
+            <aside className="panel statsPanel">
+              <h2>Status</h2>
+              <dl>
+                <dt>Geld</dt><dd>{formatMoney(game.stats.money)}</dd>
+                <dt>Monat</dt><dd>{formatGameDate(game.month)}</dd>
+                <dt>Rang</dt><dd>{rank.name}</dd>
+                <dt>Punkte</dt><dd>{game.points}{rank.next ? ` / ${rank.next.points}` : ''}</dd>
+                <dt>Blüten</dt><dd>{formatMoney(game.stats.counterfeit)}</dd>
+                <dt>Gesundheit</dt><dd>{game.stats.health}</dd>
+                <dt>Stärke</dt><dd>{game.stats.strength}</dd>
+                <dt>Intelligenz</dt><dd>{game.stats.intelligence}</dd>
+                <dt>Ruf</dt><dd>{game.stats.reputation} ({effective.reputation} effektiv)</dd>
+                <dt>Brutalität</dt><dd>{game.stats.brutality} ({effective.brutality} effektiv)</dd>
+                <dt>Kampfwert</dt><dd>{Math.round(effective.combat)}</dd>
+                <dt>Einschüchterung</dt><dd>{Math.round(effective.intimidation)}</dd>
+                <dt>Fahndung</dt><dd>{game.stats.wanted}</dd>
+                <dt>Gefahr</dt><dd>{game.stats.danger}</dd>
+                <dt>Pass</dt><dd>{game.stats.passport ? 'Ja' : 'Nein'}</dd>
+                <dt>Hotelzimmer</dt><dd>{game.hotelRoom ? 'Ja' : 'Nein'}</dd>
+                <dt>Bande</dt><dd>{game.gangFounded ? 'Gegründet' : 'Nein'}</dd>
+              </dl>
+            </aside>
+          </section>
+
+          <section className="lowerGrid">
+            <MiniGang game={game} />
+            <LogPanel game={game} />
+          </section>
+        </>
+      )}
+
+      {game.policeCheck && (
+        <div className="modalBackdrop" role="presentation">
+          <section className="modal" role="dialog" aria-modal="true" aria-labelledby="police-title">
+            <h2 id="police-title">Polizeikontrolle</h2>
+            <div className="modalLines">
+              <p>{game.policeCheck.reason}</p>
+              <p>Risiko: {Math.round(game.policeCheck.risk * 100)}%</p>
+              <p>Fahndung: {game.stats.wanted}, Blüten: {formatMoney(game.stats.counterfeit)}, Pass: {game.stats.passport ? 'Ja' : 'Nein'}</p>
+            </div>
+            <div className="modalButtons">
+              <button onClick={() => setGame((prev) => resolvePoliceCheck(prev, 'calm'))}>Ruhig bleiben</button>
+              <button onClick={() => setGame((prev) => resolvePoliceCheck(prev, 'bribe'))}>Bestechen</button>
+              <button onClick={() => setGame((prev) => resolvePoliceCheck(prev, 'flee'))}>Fliehen</button>
+              <button disabled={!game.stats.passport} onClick={() => setGame((prev) => resolvePoliceCheck(prev, 'passport'))}>Falschen Pass zeigen</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {recruitSearch && (
+        <div className="modalBackdrop" role="presentation">
+          <section className="modal" role="dialog" aria-modal="true">
+            <h2>Kneipe</h2>
+            <div className="modalLines">
+              {recruitSearch.split('\n').map((line) => <p key={line}>{line}</p>)}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {game.result && !game.policeCheck && (
+        <div className="modalBackdrop" role="presentation">
+          <section className="modal" role="dialog" aria-modal="true" aria-labelledby="result-title">
+            <h2 id="result-title">{game.result.title}</h2>
+            <div className="modalLines">
+              {game.result.lines.map((line) => <p key={line}>{line}</p>)}
+            </div>
+            <div className="modalButtons">
+              <button onClick={() => setGame((prev) => clearResult(prev))}>Weiter</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {pending && !game.result && !game.policeCheck && (
+        <div className="modalBackdrop" role="presentation">
+          <section className="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+            <h2 id="confirm-title">{pending.title}</h2>
+            <div className="modalLines">
+              {pending.lines.map((line) => <p key={line}>{line}</p>)}
+            </div>
+            {pending.danger && <p className="dangerText">{pending.danger}</p>}
+            <div className="modalButtons">
+              <button onClick={() => setPending(null)}>Abbrechen</button>
+              <button disabled={pending.confirmLabel === 'Nicht möglich'} onClick={runPending}>{pending.confirmLabel ?? 'Bestätigen'}</button>
+            </div>
+          </section>
+        </div>
+      )}
+    </main>
+  );
+}
+
+function keyDelta(code: string): [number, number] | undefined {
+  return {
+    ArrowUp: [0, -1],
+    KeyW: [0, -1],
+    ArrowDown: [0, 1],
+    KeyS: [0, 1],
+    ArrowLeft: [-1, 0],
+    KeyA: [-1, 0],
+    ArrowRight: [1, 0],
+    KeyD: [1, 0],
+  }[code] as [number, number] | undefined;
+}
+
+function districtClass(district: string): string {
+  return district.toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss');
+}
+
+function isActionResult(value: GameState | ActionResult): value is ActionResult {
+  return 'state' in value;
+}
+
+function ActionList({ actions: list, game, askAction }: { actions: ActionConfig[]; game: GameState; askAction: (action: ActionConfig) => void }) {
+  if (!list.length) return null;
+  return (
+    <div className="cardGrid">
+      {list.map((action) => {
+        const blocked = actionAvailability(game, action);
+        return (
+          <article className="choiceCard" key={action.id}>
+            <h3>{action.name}</h3>
+            <p>{action.effect}</p>
+            <ul>
+              <li>{action.cost ? `Kosten ${formatMoney(action.cost)}` : 'Keine Kosten'}, Schritte {action.stepCost ?? 1}</li>
+              <li>{action.reward ? `Beute ${formatMoney(action.reward[0])}-${formatMoney(action.reward[1])}` : `Effekt: ${action.effect}`}</li>
+              <li>Risiko {action.risk}, Polizei {action.policeRisk >= 0 ? '+' : ''}{action.policeRisk}</li>
+              <li>Rang {action.rank ?? 'Anfänger'}, Punkte +{action.pointEffect ?? 0}</li>
+              <li>{blocked.length ? blocked[0] : 'Anforderungen erfüllt'}</li>
+            </ul>
+            <button disabled={blocked.length > 0} onClick={() => askAction(action)}>{blocked.length ? blocked[0] : 'Auswählen'}</button>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function WeaponShop({
+  game,
+  askWeapon,
+  askTrainPlayer,
+}: {
+  game: GameState;
+  askWeapon: (weaponId: WeaponId) => void;
+  askTrainPlayer: (stat: 'strength' | 'intelligence' | 'brutality') => void;
+}) {
+  return (
+    <>
+      <h3>Training</h3>
+      <div className="trainingRow">
+        <button disabled={game.stepsLeft < 2} onClick={() => askTrainPlayer('strength')}>Stärke trainieren</button>
+        <button disabled={game.stepsLeft < 2} onClick={() => askTrainPlayer('brutality')}>Brutalität trainieren</button>
+        <button disabled={game.stepsLeft < 2} onClick={() => askTrainPlayer('intelligence')}>Intelligenz trainieren</button>
+      </div>
+      <h3>Arsenal</h3>
+      <div className="cardGrid">
+        {weapons.filter((weapon) => weapon.id !== 'none').map((weapon) => {
+          const blocked = checkRequirements(game, weapon.requiredStats);
+          const owned = game.arsenal.includes(weapon.id);
+          return (
+            <article className="choiceCard" key={weapon.id}>
+              <h3>{weapon.name}</h3>
+              <p>{weapon.description}</p>
+              <ul>
+                <li>Preis {formatMoney(weapon.price)}</li>
+                <li>Reichweite {weapon.range}, Genauigkeit {weapon.accuracy}%, Schaden {weapon.damage}</li>
+                <li>Kampf +{weapon.combatBonus}, Brutalität +{weapon.brutalityBonus}, Einschüchterung +{weapon.intimidationBonus}</li>
+                <li>{weapon.rarity}</li>
+                <li>{owned ? 'Bereits gekauft' : blocked.length ? blocked[0] : 'Kaufbar'}</li>
+              </ul>
+              <button disabled={owned || blocked.length > 0} onClick={() => askWeapon(weapon.id)}>{owned ? 'Im Arsenal' : blocked.length ? blocked[0] : 'Kaufen'}</button>
+            </article>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function CarShop({ game, askCar }: { game: GameState; askCar: (carId: CarId) => void }) {
+  return (
+    <>
+      <h3>Fuhrpark</h3>
+      <div className="cardGrid">
+        {cars.filter((car) => car.id !== 'foot').map((car) => {
+          const blocked = checkRequirements(game, [{ stat: 'reputation', min: car.reputationRequirement }, ...car.requiredStats]);
+          const owned = game.car === car.id;
+          return (
+            <article className="choiceCard" key={car.id}>
+              <h3>{car.name}</h3>
+              <p>{car.description}</p>
+              <ul>
+                <li>Preis {formatMoney(car.price)}</li>
+                <li>{car.movementPoints} Schritte pro Monat</li>
+                <li>{car.specialEffect}</li>
+                <li>{owned ? 'Aktiv' : blocked.length ? blocked[0] : 'Kaufbar'}</li>
+              </ul>
+              <button disabled={owned || blocked.length > 0} onClick={() => askCar(car.id)}>{owned ? 'Aktiv' : blocked.length ? blocked[0] : 'Kaufen'}</button>
+            </article>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function RecruitList({ game, askRecruit, premium }: { game: GameState; askRecruit: (templateId: string) => void; premium: boolean }) {
+  const options = recruitTemplates.filter((recruit) => premium || recruit.cost <= 3500);
+  return (
+    <>
+      <h3>{premium ? 'Diskrete Hotelkontakte' : 'Leute am Tresen'}</h3>
+      <div className="cardGrid">
+        {options.map((recruit) => {
+          const blocked = checkRequirements(game, recruit.requirements);
+          const hired = game.gang.some((member) => member.templateId === recruit.templateId && member.status !== 'tot');
+          return (
+            <article className="choiceCard recruitCard" key={recruit.templateId}>
+              <h3>{recruit.name} <span>"{recruit.nickname}"</span></h3>
+              <p>{recruit.role}: {recruit.special}</p>
+              <ul>
+                <li>{recruit.sex}, Startwaffe {getWeapon(recruit.weapon).name}</li>
+                <li>Handgeld {formatMoney(recruit.cost)}, Unterhalt {formatMoney(recruit.upkeep)}</li>
+                <li>ST {recruit.strength} IN {recruit.intelligence} BR {recruit.brutality} SCH {recruit.shooting} FA {recruit.driving} LO {recruit.loyalty}</li>
+                <li>{hired ? 'Bereits dabei' : blocked.length ? blocked[0] : 'Anwerbbar'}</li>
+              </ul>
+              <button disabled={hired || blocked.length > 0} onClick={() => askRecruit(recruit.templateId)}>{hired ? 'In Bande' : blocked.length ? blocked[0] : 'Ansprechen'}</button>
+            </article>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function MiniGang({ game }: { game: GameState }) {
+  return (
+    <div className="panel gangPanel">
+      <h2>Bande ({activeGang(game.gang).length} aktiv)</h2>
+      <div className="gangRows">
+        {game.gang.length === 0 && <p>Noch niemand folgt Dir. Kneipen und Hotels ändern das.</p>}
+        {game.gang.slice(0, 4).map((member) => (
+          <article key={member.id} className="memberRow">
+            <div className="portrait">{member.nickname.slice(0, 2).toUpperCase()}</div>
+            <div>
+              <strong>{member.name} "{member.nickname}"</strong>
+              <span>{member.role} / {member.status} / {getWeapon(member.weapon).name}</span>
+              <span>Unterhalt {formatMoney(member.upkeep)} / Loyalität {member.loyalty}</span>
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LogPanel({ game }: { game: GameState }) {
+  return (
+    <div className="panel logPanel">
+      <h2>Chronik</h2>
+      {game.log.map((entry, index) => <p key={`${entry.month}-${index}`}><span>M{entry.month}</span> {entry.text}</p>)}
+    </div>
+  );
+}
+
+function GangScreen({
+  game,
+  storyId,
+  setStoryId,
+  askEquip,
+  askTrain,
+  askFire,
+  askHealMember,
+}: {
+  game: GameState;
+  storyId: string | null;
+  setStoryId: (id: string | null) => void;
+  askEquip: (memberId: string, weaponId: WeaponId) => void;
+  askTrain: (memberId: string, stat: 'strength' | 'intelligence' | 'brutality' | 'shooting' | 'driving') => void;
+  askFire: (memberId: string) => void;
+  askHealMember: (memberId: string) => void;
+}) {
+  return (
+    <section className="gangScreen">
+      <div className="panel gangManagement">
+        <h2>Bandenverwaltung</h2>
+        {game.gang.length === 0 && <p>Keine Bande. Rekrutiere in Kneipe oder Hotel.</p>}
+        {game.gang.map((member) => (
+          <article key={member.id} className="gangCard">
+            <div className="portrait large">{member.nickname.slice(0, 2).toUpperCase()}</div>
+            <div className="gangDetails">
+              <h3>{member.name} <span>"{member.nickname}"</span></h3>
+              <p>{member.role} / Status: {member.status} / Unterhalt {formatMoney(member.upkeep)}</p>
+              <div className="statStrip">
+                {statShort.map(([key, label]) => <span key={key}>{label} {memberStat(member, key)}</span>)}
+              </div>
+              <p><b>Spezial:</b> {member.special}</p>
+              <p><b>Schwäche:</b> {member.weakness}</p>
+              {storyId === member.id && <p className="storyText">{member.story}</p>}
+              <div className="gangActions">
+                <select value={member.weapon} onChange={(event) => askEquip(member.id, event.target.value as WeaponId)}>
+                  {game.arsenal.map((id) => <option value={id} key={id}>{getWeapon(id).name}</option>)}
+                </select>
+                <button onClick={() => askTrain(member.id, 'shooting')}>Schießen trainieren</button>
+                <button onClick={() => askTrain(member.id, 'driving')}>Fahren trainieren</button>
+                <button onClick={() => askTrain(member.id, 'intelligence')}>Planung trainieren</button>
+                <button disabled={member.status !== 'verletzt'} onClick={() => askHealMember(member.id)}>Heilen</button>
+                <button onClick={() => setStoryId(storyId === member.id ? null : member.id)}>Geschichte</button>
+                <button onClick={() => askFire(member.id)}>Feuern</button>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+      <LogPanel game={game} />
+    </section>
+  );
+}
+
+function memberStat(member: GameState['gang'][number], key: string): number {
+  if (key === 'strength') return member.strength;
+  if (key === 'intelligence') return member.intelligence;
+  if (key === 'brutality') return member.brutality;
+  if (key === 'shooting') return member.shooting;
+  if (key === 'driving') return member.driving;
+  return member.loyalty;
+}
+
+export default App;
