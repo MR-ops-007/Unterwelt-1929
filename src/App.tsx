@@ -4,6 +4,7 @@ import {
   ActionResult,
   CarId,
   GameState,
+  Requirement,
   WeaponId,
   actions,
   activeGang,
@@ -40,6 +41,7 @@ import {
   resolvePoliceCheck,
   resolveAction,
   saveGame,
+  statLabel,
   tileVisuals,
   trainMember,
   trainPlayer,
@@ -70,7 +72,7 @@ function App() {
     () => game.map.find((tile) => tile.x === game.position.x && tile.y === game.position.y),
     [game.map, game.position.x, game.position.y],
   );
-  const currentBuilding = currentTile?.building ? getBuilding(currentTile.building) : undefined;
+  const currentBuilding = currentTile?.entranceFor ? getBuilding(currentTile.entranceFor) : undefined;
   const effective = getEffectiveStats(game);
   const rank = getRank(game.points);
 
@@ -146,8 +148,8 @@ function App() {
         `Preis: ${formatMoney(weapon.price)}`,
         `Aktuelles Geld: ${formatMoney(game.stats.money)}`,
         `Danach: ${formatMoney(game.stats.money - weapon.price)}`,
-        `Bonus: Kampf +${weapon.combatBonus}, Brutalität +${weapon.brutalityBonus}, Einschüchterung +${weapon.intimidationBonus}, Ruf +${weapon.reputationBonus}`,
         `Reichweite: ${weapon.range}, Genauigkeit: ${weapon.accuracy}%, Schaden: ${weapon.damage}`,
+        `Anforderungen: ${formatRequirements(weapon.requiredStats)}`,
         `Seltenheit: ${weapon.rarity}`,
         weapon.description,
         owned ? 'Status: bereits im Arsenal' : blocked.length ? `Fehlt: ${blocked.join(', ')}` : game.stats.money < weapon.price ? 'Fehlt: zu wenig echtes Geld, Blüten werden bei Bedarf riskant genutzt' : 'Status: kaufbar',
@@ -213,9 +215,20 @@ function App() {
   };
 
   const askTrainPlayer = (stat: 'strength' | 'intelligence' | 'brutality') => {
+    const nextStrength = Math.min(99, game.stats.strength + (stat === 'strength' ? 4 : 1));
+    const nextIntelligence = Math.min(99, game.stats.intelligence + (stat === 'intelligence' ? 4 : 1));
+    const nextBrutality = Math.min(99, game.stats.brutality + (stat === 'brutality' ? 4 : 1));
     confirm({
       title: `${stat === 'strength' ? 'Stärke' : stat === 'intelligence' ? 'Intelligenz' : 'Brutalität'} trainieren?`,
-      lines: ['Kosten: $600', 'Schrittkosten: 2', 'Verbessert den Wert um +4.', 'Schaltet bessere Waffen leichter frei.'],
+      lines: [
+        'Kosten: $600',
+        'Schrittkosten: 2',
+        `${statLabel(stat)} +4, andere Grundwerte +1.`,
+        `Stärke: ${game.stats.strength} -> ${nextStrength}`,
+        `Intelligenz: ${game.stats.intelligence} -> ${nextIntelligence}`,
+        `Brutalität: ${game.stats.brutality} -> ${nextBrutality}`,
+        'Schaltet bessere Waffen leichter frei.',
+      ],
       confirmLabel: 'Trainieren',
       onConfirm: (state) => trainPlayer(state, stat),
     });
@@ -242,7 +255,7 @@ function App() {
     if (!member) return;
     confirm({
       title: `${member.nickname} trainieren?`,
-      lines: ['Kosten: $750', `Verbessert ${stat} um +1.`, `Aktuelles Geld: ${formatMoney(game.stats.money)}`],
+      lines: ['Kosten: $750', 'Schrittkosten: 2', `Verbessert ${stat} um +5.`, `Aktuelles Geld: ${formatMoney(game.stats.money)}`],
       confirmLabel: 'Trainieren',
       onConfirm: (state) => trainMember(state, memberId, stat),
     });
@@ -277,7 +290,7 @@ function App() {
       `Nächster Monat: ${formatGameDate(game.month + 1)}`,
       `Bewegung wird auf ${getCar(game.car).movementPoints} zurückgesetzt.`,
       `Unterhalt: ${formatMoney(game.gang.reduce((sum, member) => sum + (member.status !== 'tot' ? member.upkeep : 0), 0))}`,
-      'Zufallsereignisse, Fahndung und Loyalität werden ausgewertet.',
+      'Am Monatsende werden Unterhalt, laufende Einnahmen, Erholung, Fahndung und Ereignisse berechnet.',
     ],
     confirmLabel: 'Monat beenden',
     onConfirm: processMonth,
@@ -400,21 +413,21 @@ function App() {
             <div className="mapPanel">
               <div className="cityGrid" style={{ gridTemplateColumns: `repeat(${MAP_WIDTH}, 1fr)` }}>
                 {game.map.map((tile) => {
-                  const building = tile.building ? getBuilding(tile.building) : undefined;
+                  const building = tile.entranceFor ? getBuilding(tile.entranceFor) : tile.building ? getBuilding(tile.building) : undefined;
                   const playerHere = tile.x === game.position.x && tile.y === game.position.y;
                   const visual = tileVisuals[tile.kind];
                   return (
                     <button
                       key={tile.id}
-                      className={`tile district-${districtClass(tile.district)} kind-${tile.kind} ${building ? 'buildingTile' : ''} ${playerHere ? 'playerTile' : ''}`}
+                      className={`tile district-${districtClass(tile.district)} kind-${tile.kind} ${tile.building ? 'buildingBlockTile' : ''} ${tile.entranceFor ? 'buildingTile' : ''} ${playerHere ? 'playerTile' : ''}`}
                       onClick={() => {
                         const distance = Math.abs(tile.x - game.position.x) + Math.abs(tile.y - game.position.y);
                         if (distance === 1) setGame(movePlayer(game, tile.x - game.position.x, tile.y - game.position.y));
                       }}
                       title={`${building?.name ?? visual.name} / ${tile.district}`}
                     >
-                      <span>{playerHere ? '@' : building?.icon ?? visual.icon}</span>
-                      <small>{building?.short ?? ''}</small>
+                      <span>{playerHere ? '@' : tile.entranceFor ? getBuilding(tile.entranceFor).icon : tile.building ? '█' : visual.icon}</span>
+                      <small>{tile.entranceFor ? getBuilding(tile.entranceFor).short : ''}</small>
                     </button>
                   );
                 })}
@@ -509,7 +522,7 @@ function App() {
 
       {game.result && !game.policeCheck && (
         <div className="modalBackdrop" role="presentation">
-          <section className="modal" role="dialog" aria-modal="true" aria-labelledby="result-title">
+          <section className={`modal ${game.result.title.startsWith('Steckbrief') ? 'wantedPoster' : ''}`} role="dialog" aria-modal="true" aria-labelledby="result-title">
             <h2 id="result-title">{game.result.title}</h2>
             <div className="modalLines">
               {game.result.lines.map((line) => <p key={line}>{line}</p>)}
@@ -555,6 +568,20 @@ function keyDelta(code: string): [number, number] | undefined {
 
 function districtClass(district: string): string {
   return district.toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss');
+}
+
+function formatRequirements(requirements: Requirement[]): string {
+  if (!requirements.length) return 'keine';
+  return requirements.map((requirement) => {
+    if (requirement.rank) return `Rang ${requirement.rank}`;
+    if (requirement.stat && requirement.min != null) return `${statLabel(requirement.stat)} ${requirement.min}`;
+    if (requirement.stat && requirement.max != null) return `${statLabel(requirement.stat)} höchstens ${requirement.max}`;
+    if (requirement.activeGang != null) return `${requirement.activeGang} aktive Gangmitglieder`;
+    if (requirement.hotelRoom) return 'Hotelzimmer';
+    if (requirement.gangFounded) return 'Bande gegründet';
+    if (requirement.role) return requirement.role;
+    return 'Sonderbedingung';
+  }).join(', ');
 }
 
 function isActionResult(value: GameState | ActionResult): value is ActionResult {
@@ -615,8 +642,8 @@ function WeaponShop({
               <ul>
                 <li>Preis {formatMoney(weapon.price)}</li>
                 <li>Reichweite {weapon.range}, Genauigkeit {weapon.accuracy}%, Schaden {weapon.damage}</li>
-                <li>Kampf +{weapon.combatBonus}, Brutalität +{weapon.brutalityBonus}, Einschüchterung +{weapon.intimidationBonus}</li>
-                <li>{weapon.rarity}</li>
+                <li>Anforderung: {formatRequirements(weapon.requiredStats)}</li>
+                <li>Seltenheit: {weapon.rarity}</li>
                 <li>{owned ? 'Bereits gekauft' : blocked.length ? blocked[0] : 'Kaufbar'}</li>
               </ul>
               <button disabled={owned || blocked.length > 0} onClick={() => askWeapon(weapon.id)}>{owned ? 'Im Arsenal' : blocked.length ? blocked[0] : 'Kaufen'}</button>

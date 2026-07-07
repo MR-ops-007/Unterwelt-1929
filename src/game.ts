@@ -26,7 +26,7 @@ export type District =
   | 'Bahnhofsviertel'
   | 'Polizeibezirk';
 
-export type TileKind = 'road' | 'street' | 'alley' | 'park' | 'warehouse' | 'lamp' | 'wall' | 'yard' | 'block';
+export type TileKind = 'road' | 'entrance' | 'street' | 'alley' | 'park' | 'warehouse' | 'lamp' | 'wall' | 'yard' | 'block';
 export type MemberStatus = 'aktiv' | 'verletzt' | 'verhaftet' | 'tot';
 export type Role = 'Schlaeger' | 'Fahrerin' | 'Planer' | 'Safeknacker' | 'Schuetzin' | 'Informant' | 'Verhandler';
 export type WeaponId = 'none' | 'colt1911' | 'savage1907' | 'remington11' | 'winchester97' | 'sw10' | 'thompson' | 'browningBar' | 'grenades';
@@ -183,6 +183,7 @@ export interface Tile {
   district: District;
   kind: TileKind;
   building?: BuildingType;
+  entranceFor?: BuildingType;
 }
 
 export interface LogEntry {
@@ -234,6 +235,7 @@ export interface GameState {
   gangFounded: boolean;
   arsenal: WeaponId[];
   monthly: Record<string, boolean>;
+  policeCheckCooldownUntilMonth?: number;
   log: LogEntry[];
   map: Tile[];
   result?: ResultMessage;
@@ -483,7 +485,7 @@ export const recruitTemplates: GangMemberTemplate[] = [
     driving: 24,
     loyalty: 60,
     cost: 1200,
-    upkeep: 300,
+    upkeep: 120,
     weapon: 'none',
     special: '+15% bei Einschüchterung und Schutzgeld.',
     weakness: 'Schlecht in Planung, erhöht Polizeirisiko bei komplexen Coups leicht.',
@@ -503,7 +505,7 @@ export const recruitTemplates: GangMemberTemplate[] = [
     driving: 88,
     loyalty: 70,
     cost: 2500,
-    upkeep: 500,
+    upkeep: 250,
     weapon: 'none',
     special: 'Verbessert Fluchtchancen nach Raubzügen.',
     weakness: 'Verlangt bessere Wagen für Hochrisiko-Jobs.',
@@ -523,7 +525,7 @@ export const recruitTemplates: GangMemberTemplate[] = [
     driving: 42,
     loyalty: 52,
     cost: 4000,
-    upkeep: 800,
+    upkeep: 450,
     weapon: 'savage1907',
     special: 'Reduziert Fehlschlagrisiko bei komplexen Coups.',
     weakness: 'Geringe Loyalität, wenn Dein Ruf schwach ist.',
@@ -543,7 +545,7 @@ export const recruitTemplates: GangMemberTemplate[] = [
     driving: 30,
     loyalty: 45,
     cost: 3000,
-    upkeep: 650,
+    upkeep: 320,
     weapon: 'none',
     special: 'Stark empfohlen für Banken, Tresore und Villen.',
     weakness: 'Kann Ärger machen, wenn die Moral niedrig ist.',
@@ -563,7 +565,7 @@ export const recruitTemplates: GangMemberTemplate[] = [
     driving: 44,
     loyalty: 62,
     cost: 7500,
-    upkeep: 1200,
+    upkeep: 750,
     weapon: 'colt1911',
     special: 'Massiver Kampfbonus in Bandenkriegen.',
     weakness: 'Erhöht Brutalität und Polizeiaufmerksamkeit.',
@@ -583,7 +585,7 @@ export const recruitTemplates: GangMemberTemplate[] = [
     driving: 50,
     loyalty: 82,
     cost: 900,
-    upkeep: 250,
+    upkeep: 90,
     weapon: 'none',
     special: 'Kleines passives Einkommen und bessere Gerüchte.',
     weakness: 'Schwach im Kampf.',
@@ -603,7 +605,7 @@ export const recruitTemplates: GangMemberTemplate[] = [
     driving: 42,
     loyalty: 74,
     cost: 5000,
-    upkeep: 1000,
+    upkeep: 500,
     weapon: 'sw10',
     special: 'Verbessert Erpressung, Bestechung und Verhandlungen.',
     weakness: 'Teuer und anspruchsvoll.',
@@ -632,10 +634,10 @@ export const buildings: BuildingConfig[] = [
 ];
 
 export const actions: ActionConfig[] = [
-  { id: 'beg', name: 'Betteln', building: 'shop', cost: 0, reward: [10, 80], risk: 'niedrig', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 1, cooldownKey: 'beg', effect: 'Ein würdeloser, aber sicherer Anfang.', failure: 'Niemand gibt Dir etwas.' },
+  { id: 'beg', name: 'Betteln', building: 'shop', cost: 0, reward: [10, 80], risk: 'niedrig', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'beg', effect: 'Ein würdeloser, aber sicherer Anfang.', failure: 'Niemand gibt Dir etwas.' },
   { id: 'shop-robbery', name: 'Laden ausrauben', building: 'shop', cost: 0, reward: [120, 420], risk: 'hoch', policeRisk: 2, reputationEffect: 1, requirements: [], rank: 'Anfänger', stepCost: 2, pointEffect: 2, cooldownKey: 'shop-robbery', effect: 'Riskanter Kassenraub. Einmal pro Laden und Monat.', failure: 'Der Ladenbesitzer ruft die Polizei.' },
   { id: 'small-theft', name: 'Kleinen Bruch drehen', building: 'pawnshop', cost: 0, reward: [120, 420], risk: 'niedrig', policeRisk: 1, reputationEffect: 1, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 2, cooldownKey: 'small-theft', effect: 'Schnelles Geld für den Anfang.', failure: 'Du verlierst Gesundheit oder bekommst Fahndungsdruck.' },
-  { id: 'pawn-sale', name: 'Beute versetzen', building: 'pawnshop', cost: 0, reward: [80, 260], risk: 'niedrig', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 1, cooldownKey: 'pawn-sale', effect: 'Kleiner sicherer Erlös.', failure: 'Der Pfandleiher drückt den Preis.' },
+  { id: 'pawn-sale', name: 'Beute versetzen', building: 'pawnshop', cost: 0, reward: [80, 260], risk: 'niedrig', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'pawn-sale', effect: 'Kleiner sicherer Erlös.', failure: 'Der Pfandleiher drückt den Preis.' },
   { id: 'subway-pickpocket', name: 'Taschendiebstahl am Bahnsteig', building: 'subway', cost: 0, reward: [90, 350], risk: 'niedrig', policeRisk: 1, reputationEffect: 1, requirements: [], rank: 'Kleiner Fisch', stepCost: 1, pointEffect: 2, cooldownKey: 'subway', effect: 'Viele Taschen, wenig Licht.', failure: 'Ein Schaffner schaut zu genau hin.' },
   { id: 'blackmail', name: 'Schutzgeld eintreiben', building: 'kneipe', cost: 0, reward: [320, 900], risk: 'mittel', policeRisk: 1, reputationEffect: 2, requirements: [], rank: 'Langfinger', stepCost: 2, pointEffect: 3, cooldownKey: 'blackmail', recommendedRoles: ['Schlaeger', 'Verhandler'], gangSlots: 1, effect: 'Brutalität und Verhandlungsgeschick zählen.', failure: 'Das Opfer rennt zur Polizei.' },
   { id: 'rent-room', name: 'Hotelzimmer mieten', building: 'hotel', cost: 900, risk: 'niedrig', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Langfinger', stepCost: 1, pointEffect: 0, cooldownKey: 'rent-room', effect: 'Ein Zimmer als Basis. Voraussetzung für die Bande.', failure: 'Der Portier will echtes Geld.' },
@@ -652,18 +654,19 @@ export const actions: ActionConfig[] = [
   { id: 'villa-burglary', name: 'Villa ausräumen', building: 'villa', cost: 200, reward: [2200, 9000], risk: 'hoch', policeRisk: 2, reputationEffect: 3, requirements: [{ rank: 'Langfinger' }, { stat: 'intelligence', min: 45 }, { activeGang: 1 }], rank: 'Langfinger', stepCost: 2, pointEffect: 5, cooldownKey: 'villa-burglary', recommendedRoles: ['Safeknacker', 'Planer'], gangSlots: 2, danger: 1, effect: 'Intelligenz und Safeknacker glänzen.', failure: 'Alarmanlagen sind die Sprache der Reichen.' },
   { id: 'police-bribe', name: 'Akten schmieren', building: 'police', cost: 1800, risk: 'mittel', policeRisk: -2, reputationEffect: 0, requirements: [{ rank: 'Bullenschreck' }, { stat: 'intelligence', min: 35 }], rank: 'Bullenschreck', stepCost: 1, pointEffect: 0, cooldownKey: 'police-bribe', recommendedRoles: ['Verhandler'], effect: 'Fahndung sinkt, wenn die Umschläge dick genug sind.', failure: 'Ein ehrlicher Beamter ist teuer.' },
   { id: 'gang-war', name: 'Bandenkrieg anzetteln', building: 'police', cost: 0, risk: 'sehr hoch', policeRisk: 2, reputationEffect: 5, requirements: [{ rank: 'Bullenschreck' }, { activeGang: 2 }], rank: 'Bullenschreck', stepCost: 2, pointEffect: 6, cooldownKey: 'gang-war', recommendedRoles: ['Schuetzin', 'Schlaeger'], danger: 2, effect: 'Startet einen taktischen Kampf.', failure: 'Die Straße frisst Schwäche.' },
-  { id: 'cheap-counterfeit', name: 'Kleine Blüte kaufen', building: 'counterfeit', cost: 500, reward: [1000, 1000], risk: 'hoch', policeRisk: 2, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 1, cooldownKey: 'cheap-counterfeit', effect: 'Gibt $1.000 Falschgeld, hohe Entdeckungsgefahr.', failure: 'Der Schein riecht zu frisch.' },
-  { id: 'clean-counterfeit', name: 'Saubere Blüte kaufen', building: 'counterfeit', cost: 2000, reward: [3500, 3500], risk: 'mittel', policeRisk: 1, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 2, cooldownKey: 'clean-counterfeit', effect: 'Gibt $3.500 Falschgeld, mittlere Entdeckungsgefahr.', failure: 'Ein Händler merkt sich Dein Gesicht.' },
+  { id: 'cheap-counterfeit', name: 'Kleine Blüte kaufen', building: 'counterfeit', cost: 500, reward: [1000, 1000], risk: 'hoch', policeRisk: 2, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'cheap-counterfeit', effect: 'Gibt $1.000 Falschgeld, hohe Entdeckungsgefahr.', failure: 'Der Schein riecht zu frisch.' },
+  { id: 'clean-counterfeit', name: 'Saubere Blüte kaufen', building: 'counterfeit', cost: 2000, reward: [3500, 3500], risk: 'mittel', policeRisk: 1, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'clean-counterfeit', effect: 'Gibt $3.500 Falschgeld, mittlere Entdeckungsgefahr.', failure: 'Ein Händler merkt sich Dein Gesicht.' },
   { id: 'master-counterfeit', name: 'Meisterdruck kaufen', building: 'counterfeit', cost: 7500, reward: [12000, 12000], risk: 'niedrig', policeRisk: 1, reputationEffect: 0, requirements: [{ rank: 'Mafiosi' }], rank: 'Mafiosi', stepCost: 1, pointEffect: 3, cooldownKey: 'master-counterfeit', effect: 'Gibt $12.000 Falschgeld, niedrige Entdeckungsgefahr.', failure: 'Perfekt ist nie kostenlos.' },
   { id: 'fake-passport', name: 'Neuen Pass besorgen', building: 'counterfeit', cost: 5000, risk: 'mittel', policeRisk: -2, reputationEffect: 0, requirements: [{ stat: 'intelligence', min: 35 }], rank: 'Anfänger', stepCost: 1, pointEffect: 1, cooldownKey: 'fake-passport', effect: 'Fahndung sinkt um 2, Polizeikontrollen werden harmloser.', failure: 'Ein falscher Name hilft nicht bei echten Fehlern.' },
   { id: 'counterfeit-contacts', name: 'Kontakte kaufen', building: 'counterfeit', cost: 2500, risk: 'mittel', policeRisk: 0, reputationEffect: 2, requirements: [{ rank: 'Langfinger' }], rank: 'Langfinger', stepCost: 1, pointEffect: 2, cooldownKey: 'counterfeit-contacts', effect: 'Ruf +2, bessere Geschäfte mit Ede.', failure: 'Kontakte reden erst, wenn Geld redet.' },
-  { id: 'loan-take', name: 'Kredit aufnehmen', building: 'loanshark', cost: 0, reward: [1500, 1500], risk: 'mittel', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 1, cooldownKey: 'loan-take', effect: 'Schnelles Geld, später Schmerzen.', failure: 'Der Hai hält Dich für zu klein.' },
+  { id: 'loan-take', name: 'Kredit aufnehmen', building: 'loanshark', cost: 0, reward: [1500, 1500], risk: 'mittel', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'loan-take', effect: 'Schnelles Geld, später Schmerzen.', failure: 'Der Hai hält Dich für zu klein.' },
   { id: 'loan-repay', name: 'Kredit zurückzahlen', building: 'loanshark', cost: 2000, risk: 'niedrig', policeRisk: 0, reputationEffect: 1, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 1, cooldownKey: 'loan-repay', effect: 'Ruf steigt, Schulden verschwinden im Rauch.', failure: 'Ohne Geld bleibt der Hai hungrig.' },
   { id: 'steal-car', name: 'Auto stehlen', building: 'cars', cost: 0, risk: 'hoch', policeRisk: 2, reputationEffect: 1, requirements: [{ rank: 'Langfinger' }], rank: 'Langfinger', stepCost: 2, pointEffect: 4, cooldownKey: 'steal-car', effect: 'Chance auf einen besseren Wagen ohne Kaufpreis.', failure: 'Ein Wachmann merkt sich Deine Schuhe.' },
 ];
 
 export const tileVisuals: Record<TileKind, { icon: string; name: string }> = {
   road: { icon: ' ', name: 'Straße' },
+  entrance: { icon: '▣', name: 'Eingang' },
   street: { icon: '·', name: 'Straße' },
   alley: { icon: '░', name: 'Gasse' },
   park: { icon: '♠', name: 'Park' },
@@ -732,11 +735,39 @@ export function createMap(): Tile[] {
   for (let y = 0; y < MAP_HEIGHT; y += 1) {
     for (let x = 0; x < MAP_WIDTH; x += 1) {
       const district = districtFor(x, y);
-      const match = buildingPositions.find(([bx, by]) => bx === x && by === y);
-      tiles.push({ id: `${x}-${y}`, x, y, district, kind: kindFor(x, y, district), building: match?.[2] });
+      const entrance = buildingPositions.find(([bx, by]) => bx === x && by === y);
+      const building = buildingPositions.find(([bx, by]) => {
+        const tile = buildingTileFor(bx, by);
+        return tile.x === x && tile.y === y;
+      });
+      tiles.push({
+        id: `${x}-${y}`,
+        x,
+        y,
+        district,
+        kind: entrance ? 'entrance' : building ? 'block' : kindFor(x, y, district),
+        entranceFor: entrance?.[2],
+        building: building?.[2],
+      });
     }
   }
   return tiles;
+}
+
+function buildingTileFor(x: number, y: number): { x: number; y: number } {
+  const candidates = [
+    { x: x + 1, y: y + 1 },
+    { x: x - 1, y: y + 1 },
+    { x: x + 1, y: y - 1 },
+    { x: x - 1, y: y - 1 },
+  ];
+  return candidates.find((candidate) => (
+    candidate.x >= 0 &&
+    candidate.x < MAP_WIDTH &&
+    candidate.y >= 0 &&
+    candidate.y < MAP_HEIGHT &&
+    !isRoad(candidate.x, candidate.y)
+  )) ?? { x, y };
 }
 
 export function validateMapConnectivity(map: Tile[] = createMap(), start = { x: 1, y: 1 }): { valid: boolean; unreachable: Tile[] } {
@@ -753,7 +784,11 @@ export function validateMapConnectivity(map: Tile[] = createMap(), start = { x: 
       queue.push({ x, y });
     }
   }
-  const unreachable = map.filter((tile) => tile.building && !seen.has(tile.id));
+  const unreachable = map.filter((tile) => tile.entranceFor && !seen.has(tile.id));
+  const buildingsWithoutEntrance = buildings.filter((building) => !map.some((tile) => tile.entranceFor === building.id));
+  if (unreachable.length || buildingsWithoutEntrance.length) {
+    console.warn('Map connectivity failed', { unreachable, buildingsWithoutEntrance });
+  }
   return { valid: unreachable.length === 0, unreachable };
 }
 
@@ -869,6 +904,7 @@ export function newGame(startingStats: Pick<PlayerStats, 'strength' | 'intellige
     gangFounded: false,
     arsenal: ['none'],
     monthly: {},
+    policeCheckCooldownUntilMonth: 0,
     map: createMap(),
     log: [{ month: 0, text: 'Chicago, 01/1925. Du hast $700, einen schlechten Mantel und keinen Namen auf der Straße.' }],
   };
@@ -890,6 +926,7 @@ export function loadGame(): GameState | null {
       gangFounded: Boolean(state.gangFounded),
       arsenal: state.arsenal?.length ? state.arsenal : ['none', state.currentWeapon ?? 'none'],
       monthly: state.monthly ?? {},
+      policeCheckCooldownUntilMonth: state.policeCheckCooldownUntilMonth ?? 0,
       map: createMap(),
       result: undefined,
       policeCheck: undefined,
@@ -965,6 +1002,25 @@ function successChance(state: GameState, action: ActionConfig): number {
   return clamp(base + effective.combat * 1.2 + roleBonus + complexityBonus - pressure, 8, 92);
 }
 
+function successfulWantedIncrease(action: ActionConfig, policeShift: number): number {
+  if (['beg', 'pawn-sale', 'casino-gamble', 'loan-take', 'loan-repay', 'rent-room', 'heal-player', 'counterfeit-contacts'].includes(action.id)) return 0;
+  if (['small-theft', 'subway-pickpocket', 'station-job'].includes(action.id)) return 0;
+  if (action.id === 'shop-robbery') return Math.random() < 0.35 ? 1 : 0;
+  if (['bank-robbery', 'safe-crack', 'harbor-heist', 'villa-burglary', 'train-robbery', 'casino-extort', 'steal-car'].includes(action.id)) return Math.max(1, policeShift);
+  return Math.max(0, policeShift);
+}
+
+function failedWantedIncrease(action: ActionConfig): number {
+  if (['beg', 'pawn-sale', 'loan-take', 'loan-repay', 'casino-gamble'].includes(action.id)) return 0;
+  if (action.policeRisk <= 0) return 0;
+  return Math.max(1, action.policeRisk);
+}
+
+function failedDamage(action: ActionConfig): number {
+  if (['beg', 'pawn-sale', 'loan-take', 'loan-repay', 'casino-gamble'].includes(action.id)) return 0;
+  return action.risk === 'sehr hoch' ? 30 : action.risk === 'hoch' ? 20 : 10;
+}
+
 export function describeAction(state: GameState, action: ActionConfig): string[] {
   const req = actionAvailability(state, action);
   return [
@@ -999,7 +1055,10 @@ export function buyCar(state: GameState, carId: CarId): GameState {
   if (blocked.length) return withResult(addLog(state, blocked[0]), 'Nicht möglich', blocked);
   const paid = spend(state, car.price);
   if (!paid) return withResult(addLog(state, `${car.name} kostet ${formatMoney(car.price)}.`), 'Nicht möglich', [`${car.name} kostet ${formatMoney(car.price)}.`]);
-  return withResult(addLog({ ...paid, car: carId, stepsLeft: car.movementPoints }, `${car.name} gekauft. Bewegung pro Monat: ${car.movementPoints}.`), 'Auto gekauft', [`${car.name} ist jetzt aktiv.`, `Bewegung pro Monat: ${car.movementPoints}.`, car.specialEffect]);
+  const previousMovement = getCar(state.car).movementPoints;
+  const usedSteps = Math.max(0, previousMovement - state.stepsLeft);
+  const stepsLeft = clamp(car.movementPoints - usedSteps, 0, car.movementPoints);
+  return withResult(addLog({ ...paid, car: carId, stepsLeft }, `${car.name} gekauft. Bewegung pro Monat: ${car.movementPoints}.`), 'Auto gekauft', [`${car.name} ist jetzt aktiv.`, `Bewegung pro Monat: ${car.movementPoints}.`, `Übrige Schritte: ${stepsLeft}.`, car.specialEffect]);
 }
 
 export function hireRecruit(state: GameState, templateId: string): GameState {
@@ -1036,11 +1095,24 @@ export function trainPlayer(state: GameState, stat: 'strength' | 'intelligence' 
   const paid = spend(state, 600);
   if (!paid) return withResult(addLog(state, 'Training kostet $600.'), 'Nicht möglich', ['Training kostet $600.']);
   if (paid.stepsLeft < 2) return withResult(state, 'Nicht möglich', ['Training benötigt 2 Schritte.']);
+  const previous = paid.stats;
+  const nextStats = {
+    ...paid.stats,
+    strength: clamp(paid.stats.strength + (stat === 'strength' ? 4 : 1), 1, 99),
+    intelligence: clamp(paid.stats.intelligence + (stat === 'intelligence' ? 4 : 1), 1, 99),
+    brutality: clamp(paid.stats.brutality + (stat === 'brutality' ? 4 : 1), 1, 99),
+  };
   return withResult(addLog({
     ...paid,
     stepsLeft: paid.stepsLeft - 2,
-    stats: { ...paid.stats, [stat]: clamp(paid.stats[stat] + 4, 1, 99) },
-  }, `Du trainierst ${statLabel(stat)}.`), 'Training abgeschlossen', [`${statLabel(stat)} +4.`, 'Bessere Waffen werden erreichbar.']);
+    stats: nextStats,
+  }, `Du trainierst ${statLabel(stat)}.`), 'Training abgeschlossen', [
+    `${statLabel(stat)} +4, andere Grundwerte +1.`,
+    `Stärke ${previous.strength} -> ${nextStats.strength}`,
+    `Intelligenz ${previous.intelligence} -> ${nextStats.intelligence}`,
+    `Brutalität ${previous.brutality} -> ${nextStats.brutality}`,
+    'Bessere Waffen werden erreichbar.',
+  ]);
 }
 
 export function fireMember(state: GameState, memberId: string): GameState {
@@ -1137,6 +1209,7 @@ export function resolveAction(state: GameState, actionId: ActionId): ActionResul
 
   if (success) {
     const reward = action.reward ? action.reward[0] + Math.floor(Math.random() * (action.reward[1] - action.reward[0] + 1)) : 0;
+    const wantedIncrease = successfulWantedIncrease(action, policeShift);
     next = {
       ...next,
       points: clamp(next.points + (action.pointEffect ?? 0), 0, 120),
@@ -1144,13 +1217,14 @@ export function resolveAction(state: GameState, actionId: ActionId): ActionResul
         ...next.stats,
         money: next.stats.money + reward,
         reputation: clamp(next.stats.reputation + action.reputationEffect, 0, 99),
-        wanted: clamp(next.stats.wanted + Math.max(0, policeShift), 0, 10),
+        wanted: clamp(next.stats.wanted + wantedIncrease, 0, 10),
         danger: clamp(next.stats.danger + (action.danger ?? 0), 0, 10),
       },
     };
-    next = withResult(addLog(next, `${action.name} gelingt. Beute: ${formatMoney(reward)}.`), 'Erfolg', [`${action.name} gelingt.`, `Beute: ${formatMoney(reward)}.`, `Punkte +${action.pointEffect ?? 0}.`, `Ruf ${action.reputationEffect >= 0 ? '+' : ''}${action.reputationEffect}.`]);
+    next = withResult(addLog(next, `${action.name} gelingt. Beute: ${formatMoney(reward)}.`), 'Erfolg', [`${action.name} gelingt.`, `Beute: ${formatMoney(reward)}.`, `Punkte +${action.pointEffect ?? 0}.`, `Ruf ${action.reputationEffect >= 0 ? '+' : ''}${action.reputationEffect}.`, wantedIncrease ? `Fahndung +${wantedIncrease}.` : 'Keine zusätzliche Fahndung.']);
   } else {
-    const damage = action.risk === 'sehr hoch' ? 30 : action.risk === 'hoch' ? 20 : 10;
+    const damage = failedDamage(action);
+    const wantedIncrease = failedWantedIncrease(action);
     const active = activeGang(next.gang);
     const unlucky = active.length && Math.random() < 0.45 ? active[Math.floor(Math.random() * active.length)] : undefined;
     next = {
@@ -1158,12 +1232,12 @@ export function resolveAction(state: GameState, actionId: ActionId): ActionResul
       stats: {
         ...next.stats,
         health: clamp(next.stats.health - damage, 0, 100),
-        wanted: clamp(next.stats.wanted + Math.max(1, action.policeRisk), 0, 10),
-        reputation: clamp(next.stats.reputation - 1, 0, 99),
+        wanted: clamp(next.stats.wanted + wantedIncrease, 0, 10),
+        reputation: clamp(next.stats.reputation - (action.id === 'beg' ? 0 : 1), 0, 99),
       },
       gang: next.gang.map((member) => member.id === unlucky?.id ? { ...member, status: Math.random() < 0.25 ? 'verhaftet' : 'verletzt' } : member),
     };
-    next = withResult(addLog(next, `${action.name} scheitert. ${action.failure}`), 'Fehlschlag', [action.failure, `Gesundheit -${damage}.`, `Fahndung +${Math.max(1, action.policeRisk)}.`]);
+    next = withResult(addLog(next, `${action.name} scheitert. ${action.failure}`), 'Fehlschlag', [action.failure, `Gesundheit -${damage}.`, wantedIncrease ? `Fahndung +${wantedIncrease}.` : 'Keine zusätzliche Fahndung.']);
   }
 
   if (next.stats.health <= 0) next = { ...next, screen: 'lost', gameOverReason: 'Du bist Deinen Verletzungen erlegen.' };
@@ -1172,6 +1246,7 @@ export function resolveAction(state: GameState, actionId: ActionId): ActionResul
 }
 
 export function processMonth(state: GameState): GameState {
+  const previousRank = getRank(state.points).name;
   const upkeep = state.gang.filter((member) => member.status !== 'tot').reduce((sum, member) => sum + member.upkeep, 0);
   const informantIncome = activeGang(state.gang).filter((member) => member.role === 'Informant').length * 180;
   const protectionIncome = Object.keys(state.monthly ?? {}).filter((key) => key.startsWith('blackmail')).length * 90;
@@ -1188,7 +1263,7 @@ export function processMonth(state: GameState): GameState {
     },
     gang: state.gang.map((member) => member.status === 'verletzt' && Math.random() < 0.35 ? { ...member, status: 'aktiv' } : member),
   };
-  const events: string[] = [`Unterhalt: ${formatMoney(upkeep)}.`, `Informanten: ${formatMoney(informantIncome)}.`, `Schutzgeld-Nachhall: ${formatMoney(protectionIncome)}.`];
+  const events: string[] = [`Unterhalt: ${formatMoney(upkeep)}.`, `Informanten: ${formatMoney(informantIncome)}.`, `laufendes Schutzgeld: ${formatMoney(protectionIncome)}.`];
   next = addLog(next, `Monat endet. Unterhalt: ${formatMoney(upkeep)}. Informanten: ${formatMoney(informantIncome)}.`);
   if (next.stats.money < 0) {
     next = {
@@ -1217,11 +1292,22 @@ export function processMonth(state: GameState): GameState {
   if (next.month >= 36) next = { ...next, screen: 'lost', gameOverReason: '01/1928 ist erreicht. Die Stadt hat einen anderen Boss gefunden.' };
   if (next.stats.health <= 0) next = { ...next, screen: 'lost', gameOverReason: 'Du bist Deinen Verletzungen erlegen.' };
   if (next.points >= 120 && next.stats.money >= 50000 && activeGang(next.gang).length >= 5) next = { ...next, screen: 'won', gameOverReason: 'Du bist Der Pate geworden.' };
-  return withResult(next, `Monatsbericht ${formatGameDate(next.month)}`, [
-    `Geld: ${formatMoney(next.stats.money)}`,
-    `Rang: ${getRank(next.points).name}`,
+  const currentRank = getRank(next.points).name;
+  const income = informantIncome + protectionIncome;
+  const weapon = getWeapon(next.arsenal[next.arsenal.length - 1] ?? 'none');
+  return withResult(next, `Steckbrief ${formatGameDate(next.month)}`, [
+    '[||||]',
+    'Name: Unbekannter aus Chicago',
+    `Rang: ${currentRank}${currentRank !== previousRank ? ` (Aufstieg von ${previousRank})` : ''}`,
     `Punkte: ${next.points}`,
+    `Geld: ${formatMoney(next.stats.money)}`,
     `Fahndung: ${next.stats.wanted}`,
+    `Gesundheit: ${next.stats.health}`,
+    `Waffe: ${weapon.name}`,
+    `Auto: ${getCar(next.car).name}`,
+    `Bande: ${activeGang(next.gang).length}/${next.gang.length} aktiv`,
+    `Monatliche Einnahmen: ${formatMoney(income)}`,
+    `Monatlicher Unterhalt: ${formatMoney(upkeep)}`,
     ...events,
   ]);
 }
@@ -1238,6 +1324,7 @@ export function movePlayer(state: GameState, dx: number, dy: number): GameState 
   if (Math.random() < risk) {
     next = {
       ...next,
+      monthly: { ...(next.monthly ?? {}), randomPoliceCheckDone: true },
       policeCheck: {
         risk,
         reason: 'Eine Streife mustert Dich an der Straßenecke.',
@@ -1248,16 +1335,18 @@ export function movePlayer(state: GameState, dx: number, dy: number): GameState 
 }
 
 function isWalkable(tile: Tile): boolean {
-  return tile.kind === 'road' || Boolean(tile.building);
+  return tile.kind === 'road' || tile.kind === 'entrance';
 }
 
 function policeCheckRisk(state: GameState): number {
   if (rankMeets(getRank(state.points).name, 'Bullenschreck')) return 0;
-  const rankPressure = ranks.findIndex((rank) => rank.name === getRank(state.points).name) * 0.006;
-  const goodsPressure = state.stats.counterfeit > 0 ? 0.025 : 0;
-  const passportRelief = state.stats.passport ? -0.025 : 0;
-  const carRelief = getCar(state.car).policeRiskModifier * 0.012;
-  return clamp(0.015 + state.stats.wanted * 0.018 + state.stats.danger * 0.008 + rankPressure + goodsPressure + passportRelief + carRelief, 0.005, 0.22);
+  if (state.month === 0) return 0;
+  if (state.monthly?.randomPoliceCheckDone) return 0;
+  if (state.policeCheckCooldownUntilMonth != null && state.month < state.policeCheckCooldownUntilMonth) return 0;
+  const rankPressure = ranks.findIndex((rank) => rank.name === getRank(state.points).name) * 0.0012;
+  const passportRelief = state.stats.passport ? -0.002 : 0;
+  const carRelief = getCar(state.car).policeRiskModifier * 0.001;
+  return clamp(0.003 + state.stats.wanted * 0.0035 + state.stats.danger * 0.002 + rankPressure + passportRelief + carRelief, 0, 0.04);
 }
 
 export function resolvePoliceCheck(state: GameState, option: 'flee' | 'bribe' | 'calm' | 'passport'): GameState {
@@ -1275,23 +1364,33 @@ export function resolvePoliceCheck(state: GameState, option: 'flee' | 'bribe' | 
     return withResult(addLog(next, 'Polizeikontrolle überstanden.'), 'Polizeikontrolle', [option === 'passport' ? 'Der falsche Pass hält.' : 'Du kommst davon.', cost ? `Bestechung: ${formatMoney(cost)}.` : 'Keine Kosten.']);
   }
   const jailMonths = option === 'flee' ? 2 : 1 + Math.floor(Math.random() * 2);
-  const moneyLoss = Math.min(next.stats.money, 250 + next.stats.wanted * 180);
+  const moneyLoss = Math.min(next.stats.money, 120 + next.stats.wanted * 80);
+  const targetMonth = clamp(next.month + jailMonths, 0, 36);
   next = {
     ...next,
-    month: clamp(next.month + jailMonths, 0, 36),
+    month: targetMonth,
+    position: { x: 23, y: 1 },
     stepsLeft: getCar(next.car).movementPoints,
-    monthly: {},
+    monthly: jailMonths > 0 ? {} : next.monthly,
+    policeCheck: undefined,
+    policeCheckCooldownUntilMonth: targetMonth + 1,
     points: clamp(next.points - (option === 'flee' ? 5 : 3), 0, 120),
     stats: {
       ...next.stats,
       money: next.stats.money - moneyLoss,
       counterfeit: Math.max(0, next.stats.counterfeit - 1000),
-      wanted: clamp(next.stats.wanted + (option === 'flee' ? 2 : 1), 0, 10),
+      wanted: clamp(next.stats.wanted - 1, 0, 10),
     },
     gang: next.gang.map((member, index) => index === 0 && Math.random() < 0.25 ? { ...member, status: 'verhaftet' } : member),
   };
   if (next.month >= 36) next = { ...next, screen: 'lost', gameOverReason: 'Du hast zu viel Zeit im Gefängnis verloren. 01/1928 ist erreicht.' };
-  return withResult(addLog(next, `Verhaftet: ${jailMonths} Monat(e) verloren.`), 'Verhaftet', [`Du verlierst ${jailMonths} Monat(e).`, `Geldverlust: ${formatMoney(moneyLoss)}.`, 'Punkte sinken.', 'Fahndung steigt.']);
+  return withResult(addLog(next, `Verhaftet: ${jailMonths} Monat(e) verloren.`), 'Verhaftet', [
+    'Du kommst aus dem Polizeirevier. Für diesen Monat hältst Du besser den Kopf unten.',
+    `Du verlierst ${jailMonths} Monat(e).`,
+    `Geldverlust: ${formatMoney(moneyLoss)}.`,
+    'Punkte sinken leicht.',
+    'Fahndung kühlt etwas ab.',
+  ]);
 }
 
 export function makeCombat(state: GameState, kind: 'police' | 'rival'): CombatState {
