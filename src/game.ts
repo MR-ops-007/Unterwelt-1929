@@ -1220,7 +1220,7 @@ export function resolveAction(state: GameState, actionId: ActionId): ActionResul
   const action = getAction(actionId);
   const blocked = actionAvailability(state, action);
   if (blocked.length) return { state: withResult(addLog(state, blocked[0]), 'Nicht möglich', blocked) };
-  if (action.id === 'gang-war') return { state, combat: makeCombat(state, 'rival') };
+  if (action.id === 'gang-war') return { state, combat: makeCombat(state, 'rival', 'rival') };
 
   const cost = actionCost(state, action);
   const paid = spend(state, cost);
@@ -1340,12 +1340,33 @@ export function resolveAction(state: GameState, actionId: ActionId): ActionResul
       gang: next.gang.map((member) => member.id === unlucky?.id ? { ...member, status: Math.random() < 0.25 ? 'verhaftet' : 'verletzt' } : member),
     };
     next = markMonthlyActivity(next, action, damage > 0);
+    const scenario = failedActionCombatScenario(action);
+    if (scenario && activeGang(next.gang).length > 0 && Math.random() < combatTriggerChance(action.risk)) {
+      next = addLog(next, `${action.name} scheitert. Waffen werden gezogen.`);
+      return { state: next, combat: makeCombat(next, 'rival', scenario) };
+    }
     next = withResult(addLog(next, `${action.name} scheitert. ${action.failure}`), 'Fehlschlag', [action.failure, `Gesundheit -${damage}.`, wantedIncrease ? `Fahndung +${wantedIncrease}.` : 'Keine zusätzliche Fahndung.']);
   }
 
   if (next.stats.health <= 0) next = { ...next, screen: 'lost', gameOverReason: 'Du bist Deinen Verletzungen erlegen.' };
   if (next.points >= 120 && next.stats.money >= 50000 && activeGang(next.gang).length >= 5) next = { ...next, screen: 'won', gameOverReason: 'Du bist Der Pate geworden.' };
   return { state: next };
+}
+
+function combatTriggerChance(risk: ActionConfig['risk']): number {
+  if (risk === 'mittel') return 0.15;
+  if (risk === 'hoch') return 0.35;
+  if (risk === 'sehr hoch') return 0.6;
+  return 0;
+}
+
+function failedActionCombatScenario(action: ActionConfig): CombatScenarioId | undefined {
+  if (action.id === 'bank-robbery' || action.id === 'safe-crack') return 'bank';
+  if (action.id === 'train-robbery') return 'station';
+  if (action.id === 'station-job') return 'station';
+  if (action.id === 'harbor-heist') return 'harbor';
+  if (action.id === 'villa-burglary') return 'villa';
+  return undefined;
 }
 
 export function processMonth(state: GameState): GameState {
@@ -1495,6 +1516,14 @@ export function resolvePoliceCheck(state: GameState, option: 'flee' | 'bribe' | 
   if (!failed) {
     return withResult(addLog(next, 'Polizeikontrolle überstanden.'), 'Polizeikontrolle', [option === 'passport' ? 'Der falsche Pass hält.' : 'Du kommst davon.', cost ? `Bestechung: ${formatMoney(cost)}.` : 'Keine Kosten.']);
   }
+  if (option === 'flee' && activeGang(next.gang).length > 0 && Math.random() < 0.6) {
+    const combat = makeCombat(next, 'police', 'police');
+    return {
+      ...addLog(next, 'Die Flucht eskaliert. Im Revier fallen Schüsse.'),
+      screen: 'combat',
+      combat,
+    };
+  }
   const jailMonths = option === 'flee' ? 2 : 1 + Math.floor(Math.random() * 2);
   const moneyLoss = Math.min(next.stats.money, 120 + next.stats.wanted * 80);
   const targetMonth = clamp(next.month + jailMonths, 0, 36);
@@ -1532,6 +1561,7 @@ interface CombatScenarioConfig {
   terrain: CombatState['terrain'];
   allySpawns: Array<{ x: number; y: number }>;
   enemySpawns: Array<{ x: number; y: number }>;
+  enemyLabels: string[];
 }
 
 const combatScenarios: Record<CombatScenarioId, CombatScenarioConfig> = {
@@ -1549,6 +1579,7 @@ const combatScenarios: Record<CombatScenarioId, CombatScenarioConfig> = {
     ],
     allySpawns: leftSpawns(),
     enemySpawns: rightSpawns(),
+    enemyLabels: ['Schupo', 'Kommissar', 'Wachmann', 'Schupo'],
   },
   bank: {
     id: 'bank',
@@ -1562,6 +1593,7 @@ const combatScenarios: Record<CombatScenarioId, CombatScenarioConfig> = {
     ],
     allySpawns: leftSpawns(),
     enemySpawns: rightSpawns(),
+    enemyLabels: ['Bankwächter', 'Kassierer mit Colt', 'Wachmann', 'Bankwächter', 'Alarmmann'],
   },
   station: {
     id: 'station',
@@ -1575,6 +1607,7 @@ const combatScenarios: Record<CombatScenarioId, CombatScenarioConfig> = {
     ],
     allySpawns: leftSpawns(),
     enemySpawns: rightSpawns(),
+    enemyLabels: ['Bahnpolizist', 'Gepäckwächter', 'Postbeamter', 'Bahnpolizist', 'Schaffner'],
   },
   harbor: {
     id: 'harbor',
@@ -1587,6 +1620,7 @@ const combatScenarios: Record<CombatScenarioId, CombatScenarioConfig> = {
     ],
     allySpawns: leftSpawns(),
     enemySpawns: rightSpawns(),
+    enemyLabels: ['Hafenwächter', 'Lagerarbeiter', 'Schmuggler', 'Hafenwächter', 'Kranführer'],
   },
   villa: {
     id: 'villa',
@@ -1600,6 +1634,7 @@ const combatScenarios: Record<CombatScenarioId, CombatScenarioConfig> = {
     ],
     allySpawns: leftSpawns(),
     enemySpawns: rightSpawns(),
+    enemyLabels: ['Leibwächter', 'Hausdiener', 'Wachhund', 'Gärtner mit Flinte', 'Leibwächter'],
   },
   rival: {
     id: 'rival',
@@ -1614,6 +1649,7 @@ const combatScenarios: Record<CombatScenarioId, CombatScenarioConfig> = {
     ],
     allySpawns: leftSpawns(),
     enemySpawns: rightSpawns(),
+    enemyLabels: ['Rivale', 'Schläger', 'Schütze', 'Rivale', 'Messerkerl'],
   },
 };
 
@@ -1666,10 +1702,11 @@ export function makeCombat(state: GameState, kind: 'police' | 'rival', scenarioI
   });
   const enemies = Array.from({ length: kind === 'police' ? 4 : 5 }, (_, index) => {
     const spawn = findOpenSpawn(scenario.enemySpawns.slice(index), occupied, scenario.terrain);
+    const label = scenario.enemyLabels[index % scenario.enemyLabels.length];
     occupied.add(`${spawn.x}-${spawn.y}`);
     return {
     id: crypto.randomUUID(),
-    name: kind === 'police' ? `Schupo ${index + 1}` : `Rivale ${index + 1}`,
+    name: `${label} ${index + 1}`,
     health: 42 + state.stats.danger * 7,
     strength: 4 + state.stats.danger,
     weapon: (index % 2 ? 'colt1911' : 'none') as WeaponId,
@@ -1699,11 +1736,13 @@ export function combatMove(combat: CombatState, id: string, dx: number, dy: numb
   return {
     ...combat,
     allies: combat.allies.map((unit) => unit.id === id ? { ...unit, x, y } : unit),
-    message: 'Bewegt. Angriffe bleiben möglich.',
+    phase: 'enemy',
+    message: `${ally.nickname} bewegt sich in Deckung.`,
   };
 }
 
 export function combatAttack(combat: CombatState, attackerId: string, enemyId: string): CombatState {
+  if (combat.phase !== 'player') return combat;
   const attacker = combat.allies.find((ally) => ally.id === attackerId);
   const enemy = combat.enemies.find((target) => target.id === enemyId);
   if (!attacker || !enemy) return combat;
