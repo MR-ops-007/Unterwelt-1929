@@ -607,6 +607,28 @@ h3 {
   color: #ff9d9d;
 }
 
+.combatCell.fxMuzzle {
+  background: #ffd84c;
+  color: #20120a;
+  box-shadow: 0 0 10px #ffd84c;
+}
+
+.combatCell.fxTrail {
+  background: #8fe3ff;
+  color: #0d1624;
+}
+
+.combatCell.fxHit {
+  background: #ff6b6b;
+  color: #ffffff;
+  box-shadow: 0 0 10px #ff6b6b;
+}
+
+.combatCell.fxMiss {
+  background: #70a6ff;
+  color: #ffffff;
+}
+
 .combatCell.obstacle {
   border-color: #ffd84c;
   background: #3b2f2f;

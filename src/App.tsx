@@ -47,6 +47,7 @@ import {
   recruitTemplates,
   rollStartingStats,
   resolvePoliceCheck,
+  resolveProtectionChallenge,
   resolveAction,
   saveGame,
   sellValue,
@@ -360,6 +361,13 @@ function App() {
     }));
   };
 
+  const handleProtectionChallenge = (option: 'ignore' | 'negotiate' | 'fight') => {
+    setGame((prev) => {
+      const result = resolveProtectionChallenge(prev, option);
+      return result.combat ? { ...result.state, screen: 'combat', combat: result.combat } : result.state;
+    });
+  };
+
   if (game.screen === 'menu') {
     const loaded = loadGame();
     return (
@@ -411,9 +419,10 @@ function App() {
               const ally = game.combat?.allies.find((unit) => unit.x === x && unit.y === y);
               const enemy = game.combat?.enemies.find((unit) => unit.x === x && unit.y === y);
               const terrain = game.combat?.terrain.find((item) => item.x === x && item.y === y);
+              const fx = combatFxClass(game.combat, x, y);
               return (
-                <button key={`${x}-${y}`} className={`combatCell terrain-${terrain?.type ?? 'floor'} ${terrain?.blocks ? 'obstacle' : ''} ${ally ? 'ally' : ''} ${enemy ? 'enemy' : ''}`} onClick={() => ally && setGame((prev) => prev.combat ? { ...prev, combat: { ...prev.combat, selectedId: ally.id } } : prev)}>
-                  {ally ? ally.nickname.slice(0, 2).toUpperCase() : enemy ? '!!' : terrain ? terrain.icon : '..'}
+                <button key={`${x}-${y}`} className={`combatCell terrain-${terrain?.type ?? 'floor'} ${terrain?.blocks ? 'obstacle' : ''} ${ally ? 'ally' : ''} ${enemy ? 'enemy' : ''} ${fx}`} onClick={() => ally && setGame((prev) => prev.combat ? { ...prev, combat: { ...prev.combat, selectedId: ally.id } } : prev)}>
+                  {fx === 'fxMuzzle' ? '✹' : fx === 'fxHit' ? '××' : fx === 'fxTrail' ? '--' : ally ? ally.nickname.slice(0, 2).toUpperCase() : enemy ? '!!' : terrain ? terrain.icon : '..'}
                 </button>
               );
             })}
@@ -591,7 +600,24 @@ function App() {
         </div>
       )}
 
-      {game.result && !game.policeCheck && (
+      {game.protectionChallenge && !game.policeCheck && (
+        <div className="modalBackdrop" role="presentation">
+          <section className="modal" role="dialog" aria-modal="true" aria-labelledby="protection-title">
+            <h2 id="protection-title">Rivalen am Laden</h2>
+            <div className="modalLines">
+              <p>{game.protectionChallenge.label} steht unter Druck.</p>
+              <p>Eine fremde Bande will Dein Schutzgeld übernehmen.</p>
+            </div>
+            <div className="modalButtons">
+              <button onClick={() => handleProtectionChallenge('ignore')}>Ignorieren</button>
+              <button onClick={() => handleProtectionChallenge('negotiate')}>Verhandeln</button>
+              <button onClick={() => handleProtectionChallenge('fight')}>Kämpfen</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {game.result && !game.policeCheck && !game.protectionChallenge && (
         <div className="modalBackdrop" role="presentation">
           <section className={`modal ${game.result.title.startsWith('Steckbrief') ? 'wantedPoster' : ''}`} role="dialog" aria-modal="true" aria-labelledby="result-title">
             <h2 id="result-title">{game.result.title}</h2>
@@ -679,6 +705,22 @@ function enemyTargetLabel(selected: NonNullable<GameState['combat']>['allies'][n
   const weapon = getWeapon(selected.weapon);
   const distance = Math.abs((selected.x ?? 0) - enemy.x) + Math.abs((selected.y ?? 0) - enemy.y);
   return `${enemy.name} HP ${Math.ceil(enemy.health)} / Entfernung ${distance} / ${distance <= weapon.range ? 'in Reichweite' : 'zu weit'}`;
+}
+
+function combatFxClass(combat: GameState['combat'], x: number, y: number): string {
+  if (!combat?.fx) return '';
+  const attacker = combat.allies.find((unit) => unit.id === combat.fx?.attackerId) ?? combat.enemies.find((unit) => unit.id === combat.fx?.attackerId);
+  const target = combat.allies.find((unit) => unit.id === combat.fx?.targetId) ?? combat.enemies.find((unit) => unit.id === combat.fx?.targetId);
+  if (!attacker || !target) return '';
+  const attackerX = attacker.x ?? 0;
+  const attackerY = attacker.y ?? 0;
+  const targetX = target.x ?? 0;
+  const targetY = target.y ?? 0;
+  if (attackerX === x && attackerY === y) return 'fxMuzzle';
+  if (targetX === x && targetY === y) return combat.fx.hit ? 'fxHit' : 'fxMiss';
+  const sameRow = attackerY === targetY && y === attackerY && x > Math.min(attackerX, targetX) && x < Math.max(attackerX, targetX);
+  const sameColumn = attackerX === targetX && x === attackerX && y > Math.min(attackerY, targetY) && y < Math.max(attackerY, targetY);
+  return sameRow || sameColumn ? 'fxTrail' : '';
 }
 
 function locationTitle(tile: GameState['map'][number] | undefined, map: GameState['map']): string {

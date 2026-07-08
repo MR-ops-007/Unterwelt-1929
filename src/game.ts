@@ -35,6 +35,7 @@ export type Screen = 'menu' | 'game' | 'gang' | 'combat' | 'won' | 'lost';
 export type RankName = 'Anfänger' | 'Schläger' | 'Kleiner Fisch' | 'Langfinger' | 'Ganove' | 'Mafiosi' | 'Bullenschreck' | 'Meuchelmörder' | 'Gangsterboss' | 'Rechte Hand' | 'Der Pate';
 export type CombatScenarioId = 'police' | 'bank' | 'station' | 'harbor' | 'villa' | 'rival';
 export type CombatTerrain = 'floor' | 'street' | 'desk' | 'counter' | 'crate' | 'wall' | 'platform';
+export type ProtectionStatus = 'protectedByPlayer' | 'protectedByRival';
 export type ActionId =
   | 'beg'
   | 'shop-robbery'
@@ -244,6 +245,9 @@ export interface CombatState {
   title: string;
   phase: 'player' | 'enemy' | 'finished';
   selectedId?: string;
+  sourceActionId?: ActionId;
+  sourceShopKey?: string;
+  fx?: { attackerId: string; targetId: string; hit: boolean };
   allies: CombatAlly[];
   enemies: CombatEnemy[];
   terrain: Array<{ x: number; y: number; type: CombatTerrain; icon: string; blocks: boolean }>;
@@ -258,6 +262,11 @@ export interface ResultMessage {
 export interface PoliceCheck {
   risk: number;
   reason: string;
+}
+
+export interface ProtectionChallenge {
+  shopKey: string;
+  label: string;
 }
 
 export interface GameState {
@@ -279,6 +288,8 @@ export interface GameState {
   monthlyInjured: boolean;
   monthlyPointGain: number;
   actionCooldowns: Record<string, number>;
+  shopProtections: Record<string, ProtectionStatus>;
+  protectionChallenge?: ProtectionChallenge;
   policeCheckCooldownUntilMonth?: number;
   policeProtectionUntilMonth?: number;
   log: LogEntry[];
@@ -662,15 +673,15 @@ export const recruitTemplates: GangMemberTemplate[] = [
 ];
 
 export const buildings: BuildingConfig[] = [
-  { id: 'hideout', name: 'Versteck', icon: 'V', short: 'V', mapLabel: 'VERST', category: 'Unterkunft', description: 'Kalter Ofen, falsche Papiere, ein Bett pro Freund.', district: 'Altstadt', actions: ['lay-low', 'found-gang'] },
-  { id: 'kneipe', name: 'Kneipe', icon: 'K', short: 'K', mapLabel: 'KNEIPE', category: 'Unterkunft', description: 'Rauch, Korn und Menschen, die neue Chefs suchen.', district: 'Rotlichtgasse', actions: ['blackmail'] },
+  { id: 'hideout', name: 'Versteck', icon: 'V', short: 'V', mapLabel: 'VERST', category: 'Unterkunft', description: 'Kalter Ofen, falsche Papiere, ein Bett pro Freund.', district: 'Altstadt', actions: ['lay-low', 'found-gang', 'gang-war'] },
+  { id: 'kneipe', name: 'Kneipe', icon: 'K', short: 'K', mapLabel: 'KNEIPE', category: 'Unterkunft', description: 'Rauch, Korn und Menschen, die neue Chefs suchen.', district: 'Rotlichtgasse', actions: ['blackmail', 'gang-war'] },
   { id: 'hotel', name: 'Hotel', icon: 'H', short: 'H', mapLabel: 'HOTEL', category: 'Unterkunft', description: 'Teure Zimmer, diskrete Türen, bessere Kontakte.', district: 'Villenviertel', actions: ['rent-room', 'found-gang'] },
   { id: 'weapons', name: 'Waffenhändler', icon: '†', short: 'WA', mapLabel: 'WAFF', category: 'Geschäfte', description: 'Der Keller riecht nach Öl und schlechten Entscheidungen.', district: 'Industriegebiet', actions: [] },
   { id: 'cars', name: 'Autohändler', icon: 'A', short: 'A', mapLabel: 'AUTO', category: 'Geschäfte', description: 'Frisierte Motoren und Rechnungen ohne Namen.', district: 'Bahnhofsviertel', actions: ['steal-car'] },
   { id: 'counterfeit', name: 'Blüten-Ede', icon: 'E', short: 'E', mapLabel: 'EDE', category: 'Geschäfte', description: 'Blüten-Ede sitzt im Hinterzimmer einer verrauchten Druckerei. Seine Scheine riechen fast echt.', district: 'Altstadt', actions: ['cheap-counterfeit', 'clean-counterfeit', 'master-counterfeit', 'fake-passport', 'counterfeit-contacts'] },
   { id: 'bank', name: 'Bank', icon: 'B', short: 'B', mapLabel: 'BANK', category: 'Risiko', description: 'Marmor, Stahl und Wachmänner mit nervösen Händen.', district: 'Altstadt', actions: ['bank-robbery', 'safe-crack'] },
   { id: 'casino', name: 'Casino', icon: 'C', short: 'C', mapLabel: 'CAS', category: 'Risiko', description: 'Glücksspiel, Schuldscheine und Samtvorhänge.', district: 'Rotlichtgasse', actions: ['casino-roulette', 'casino-crooked-cards', 'casino-roulette-brake', 'casino-high-table', 'casino-extort'] },
-  { id: 'police', name: 'Polizeirevier', icon: 'P', short: 'PR', mapLabel: 'POL', category: 'Stadt', description: 'Aktenordner, Zellen, Namen an Tafeln.', district: 'Polizeibezirk', actions: ['police-chief-bribe', 'police-bribe', 'gang-war'] },
+  { id: 'police', name: 'Polizeirevier', icon: 'P', short: 'PR', mapLabel: 'POL', category: 'Stadt', description: 'Aktenordner, Zellen, Namen an Tafeln.', district: 'Polizeibezirk', actions: ['police-chief-bribe', 'police-bribe'] },
   { id: 'hospital', name: 'Krankenhaus', icon: '+', short: '+', mapLabel: 'KH', category: 'Stadt', description: 'Saubere Laken für dreckiges Geld.', district: 'Polizeibezirk', actions: ['heal-player'] },
   { id: 'harbor', name: 'Hafenlager', icon: '▓', short: 'HL', mapLabel: 'HAFEN', category: 'Risiko', description: 'Kisten, Nebel, Wachhunde und verschwundene Fracht.', district: 'Hafenviertel', actions: ['harbor-heist'] },
   { id: 'station', name: 'Bahnhof', icon: 'Z', short: 'Z', mapLabel: 'BHF', category: 'Stadt', description: 'Koffer, Fahrpläne und niemand schaut zweimal hin.', district: 'Bahnhofsviertel', actions: ['station-job', 'train-robbery'] },
@@ -706,7 +717,7 @@ export const actions: ActionConfig[] = [
   { id: 'villa-burglary', name: 'Villa ausräumen', building: 'villa', cost: 200, reward: [2200, 9000], risk: 'hoch', policeRisk: 2, reputationEffect: 3, requirements: [{ rank: 'Langfinger' }, { stat: 'intelligence', min: 45 }, { activeGang: 1 }], rank: 'Langfinger', stepCost: 2, pointEffect: 3, cooldownKey: 'villa-burglary', recommendedRoles: ['Safeknacker', 'Planer'], gangSlots: 2, danger: 1, effect: 'Intelligenz und Safeknacker glänzen.', failure: 'Alarmanlagen sind die Sprache der Reichen.' },
   { id: 'police-chief-bribe', name: 'Polizeichef bestechen', building: 'police', cost: 0, risk: 'mittel', policeRisk: -2, reputationEffect: 0, requirements: [{ rank: 'Kleiner Fisch' }], rank: 'Kleiner Fisch', stepCost: 1, pointEffect: 0, cooldownKey: 'police-chief-bribe', recommendedRoles: ['Verhandler'], effect: 'Kauft zeitweise Ruhe auf der Straße. Der Preis richtet sich nach Rang und Fahndung.', failure: 'Der Umschlag kommt beim falschen Schreibtisch an.' },
   { id: 'police-bribe', name: 'Akten schmieren', building: 'police', cost: 1800, risk: 'mittel', policeRisk: -2, reputationEffect: 0, requirements: [{ rank: 'Langfinger' }, { stat: 'intelligence', min: 35 }], rank: 'Langfinger', stepCost: 1, pointEffect: 0, cooldownKey: 'police-bribe', recommendedRoles: ['Verhandler'], effect: 'Fahndung sinkt, wenn die Umschläge dick genug sind.', failure: 'Ein ehrlicher Beamter ist teuer.' },
-  { id: 'gang-war', name: 'Bandenkrieg anzetteln', building: 'police', cost: 0, risk: 'sehr hoch', policeRisk: 2, reputationEffect: 5, requirements: [{ rank: 'Bullenschreck' }, { activeGang: 2 }], rank: 'Bullenschreck', stepCost: 2, pointEffect: 4, cooldownKey: 'gang-war', recommendedRoles: ['Schuetzin', 'Schlaeger'], danger: 2, effect: 'Startet einen taktischen Kampf.', failure: 'Die Straße frisst Schwäche.' },
+  { id: 'gang-war', name: 'Bandenkrieg anzetteln', building: 'kneipe', cost: 0, risk: 'sehr hoch', policeRisk: 2, reputationEffect: 5, requirements: [{ rank: 'Bullenschreck' }, { activeGang: 2 }], rank: 'Bullenschreck', stepCost: 2, pointEffect: 4, cooldownKey: 'gang-war', recommendedRoles: ['Schuetzin', 'Schlaeger'], danger: 2, effect: 'Startet einen taktischen Kampf gegen Rivalen.', failure: 'Die Straße frisst Schwäche.' },
   { id: 'cheap-counterfeit', name: 'Kleine Blüte kaufen', building: 'counterfeit', cost: 500, reward: [1000, 1000], risk: 'hoch', policeRisk: 2, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'cheap-counterfeit', effect: 'Gibt $1.000 Bargeld, erhöht aber das Blütenrisiko.', failure: 'Der Schein riecht zu frisch.' },
   { id: 'clean-counterfeit', name: 'Saubere Blüte kaufen', building: 'counterfeit', cost: 2000, reward: [3500, 3500], risk: 'mittel', policeRisk: 1, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'clean-counterfeit', effect: 'Gibt $3.500 Bargeld, mittlere Entdeckungsgefahr.', failure: 'Ein Händler merkt sich Dein Gesicht.' },
   { id: 'master-counterfeit', name: 'Meisterdruck kaufen', building: 'counterfeit', cost: 7500, reward: [12000, 12000], risk: 'niedrig', policeRisk: 1, reputationEffect: 0, requirements: [{ rank: 'Mafiosi' }], rank: 'Mafiosi', stepCost: 1, pointEffect: 0, cooldownKey: 'master-counterfeit', effect: 'Gibt $12.000 Bargeld, niedrige Entdeckungsgefahr.', failure: 'Perfekt ist nie kostenlos.' },
@@ -950,6 +961,9 @@ export function actionAvailability(state: GameState, action: ActionConfig): stri
   if (cooldownUntil != null && cooldownUntil > state.month) {
     messages.push(`Ziel ist bis ${formatGameDate(cooldownUntil)} zu heiß.`);
   }
+  if (action.id === 'blackmail' && state.shopProtections?.[shopKeyAt(state)] === 'protectedByPlayer') {
+    messages.push('Dieser Laden steht bereits unter Deinem Schutz.');
+  }
   return [...new Set(messages)];
 }
 
@@ -963,6 +977,14 @@ export function actionCost(state: GameState, action: ActionConfig): number {
 
 function monthlyKey(state: GameState, action: ActionConfig): string {
   return `${action.cooldownKey ?? action.id}:${state.position.x}:${state.position.y}`;
+}
+
+function shopKeyAt(state: GameState): string {
+  return `${state.position.x}:${state.position.y}`;
+}
+
+function shopLabel(key: string): string {
+  return `Laden ${key}`;
 }
 
 export function statLabel(stat: Requirement['stat']): string {
@@ -1018,6 +1040,7 @@ export function newGame(startingStats: Pick<PlayerStats, 'strength' | 'intellige
     monthlyInjured: false,
     monthlyPointGain: 0,
     actionCooldowns: {},
+    shopProtections: {},
     policeCheckCooldownUntilMonth: 0,
     policeProtectionUntilMonth: 0,
     map: createMap(),
@@ -1077,6 +1100,8 @@ export function loadGame(): GameState | null {
       monthlyInjured: state.monthlyInjured ?? false,
       monthlyPointGain: state.monthlyPointGain ?? 0,
       actionCooldowns: state.actionCooldowns ?? {},
+      shopProtections: state.shopProtections ?? {},
+      protectionChallenge: undefined,
       policeCheckCooldownUntilMonth: state.policeCheckCooldownUntilMonth ?? 0,
       policeProtectionUntilMonth: state.policeProtectionUntilMonth ?? 0,
       map: createMap(),
@@ -1258,9 +1283,10 @@ export function describeAction(state: GameState, action: ActionConfig): string[]
     `Benötigter Rang: ${action.rank ?? 'Anfänger'}`,
     action.gangSlots ? `Gang beteiligt: bis zu ${action.gangSlots}` : 'Gang beteiligt: optional',
     action.recommendedRoles?.length ? `Empfohlen: ${action.recommendedRoles.join(', ')}` : 'Empfohlen: keine Spezialrolle',
+    action.id === 'blackmail' ? `Schutzstatus: ${state.shopProtections[shopKeyAt(state)] === 'protectedByPlayer' ? 'Dein Laden' : state.shopProtections[shopKeyAt(state)] === 'protectedByRival' ? 'Rivalenschutz' : 'offen'}` : '',
     `Erfolgschance grob: ${Math.round(successChance(state, action))}%`,
     req.length ? req.join(', ') : 'Anforderungen erfüllt',
-  ];
+  ].filter(Boolean);
 }
 
 export function buyWeapon(state: GameState, weaponId: WeaponId): GameState {
@@ -1440,7 +1466,6 @@ export function resolveAction(state: GameState, actionId: ActionId): ActionResul
   const action = getAction(actionId);
   const blocked = actionAvailability(state, action);
   if (blocked.length) return { state: withResult(addLog(state, blocked[0]), 'Nicht möglich', blocked) };
-  if (action.id === 'gang-war') return { state, combat: makeCombat(state, 'rival', 'rival') };
 
   const cost = actionCost(state, action);
   const paid = spend(state, cost);
@@ -1456,6 +1481,29 @@ export function resolveAction(state: GameState, actionId: ActionId): ActionResul
   const car = getCar(next.car);
   const policeShift = clamp(action.policeRisk + car.policeRiskModifier, -3, 4);
   next = withActionCooldown(next, action);
+
+  if (action.id === 'bank-robbery' || action.id === 'train-robbery') {
+    next = markMonthlyActivity(addLog(next, `${action.name}: Erst sprechen die Waffen.`), action);
+    return { state: next, combat: makeCombat(next, 'rival', action.id === 'bank-robbery' ? 'bank' : 'station', action.id) };
+  }
+
+  if (action.id === 'gang-war') {
+    next = markMonthlyActivity(addLog(next, 'Du lässt Rivalen wissen, dass die Straße neu sortiert wird.'), action);
+    return { state: next, combat: makeCombat(next, 'rival', 'rival', 'gang-war') };
+  }
+
+  if (action.id === 'blackmail') {
+    const shopKey = shopKeyAt(next);
+    const protection = next.shopProtections[shopKey];
+    const rivalProtected = protection === 'protectedByRival' || (!protection && Math.random() < 0.25);
+    if (rivalProtected) {
+      next = markMonthlyActivity(addLog({
+        ...next,
+        shopProtections: { ...next.shopProtections, [shopKey]: 'protectedByRival' },
+      }, 'Der Laden zahlt schon an Rivalen. Draußen warten Männer.'), action);
+      return { state: next, combat: makeCombat(next, 'rival', 'rival', 'blackmail', shopKey) };
+    }
+  }
 
   if (action.id === 'rent-room') {
     next = markMonthlyActivity({ ...next, hotelRoom: true, gangFounded: true }, action);
@@ -1537,6 +1585,9 @@ export function resolveAction(state: GameState, actionId: ActionId): ActionResul
     next = points.state;
     next = {
       ...next,
+      shopProtections: action.id === 'blackmail'
+        ? { ...next.shopProtections, [shopKeyAt(next)]: 'protectedByPlayer' }
+        : next.shopProtections,
       stats: {
         ...next.stats,
         money: next.stats.money + reward,
@@ -1597,7 +1648,8 @@ export function processMonth(state: GameState): GameState {
   const previousMonthlyPointGain = state.monthlyPointGain;
   const upkeep = state.gang.filter((member) => member.status !== 'tot').reduce((sum, member) => sum + member.upkeep, 0);
   const informantIncome = activeGang(state.gang).filter((member) => member.role === 'Informant').length * 180;
-  const protectionIncome = Object.keys(state.monthly ?? {}).filter((key) => key.startsWith('blackmail')).length * 90;
+  const protectedShops = Object.entries(state.shopProtections ?? {}).filter(([, status]) => status === 'protectedByPlayer');
+  const protectionIncome = protectedShops.length * 140;
   const canPayUpkeep = state.stats.money + informantIncome + protectionIncome >= upkeep;
   const calmMonth = state.monthlyCrimeCount === 0;
   const hardMonth = state.monthlyMajorCrimeCount > 0 || state.monthlyInjured;
@@ -1613,6 +1665,7 @@ export function processMonth(state: GameState): GameState {
     monthlyQuietActions: 0,
     monthlyInjured: false,
     monthlyPointGain: 0,
+    protectionChallenge: undefined,
     actionCooldowns: Object.fromEntries(Object.entries(state.actionCooldowns ?? {}).filter(([, until]) => until > state.month + 1)),
     stats: {
       ...state.stats,
@@ -1672,7 +1725,14 @@ export function processMonth(state: GameState): GameState {
   } else if (!calmMonth && eventRoll < 0.26) {
     next = addLog({ ...next, stats: { ...next.stats, danger: clamp(next.stats.danger + 1, 0, 10) } }, 'Eine rivalisierende Bande markiert Dein Viertel.');
     events.push('Rivalen markieren Dein Viertel: Gefahr +1.');
-  } else if (eventRoll < 0.38) {
+  } else if (protectedShops.length > 0 && eventRoll < 0.34) {
+    const [shopKey] = protectedShops[Math.floor(Math.random() * protectedShops.length)];
+    next = {
+      ...addLog(next, 'Rivalen wollen einen Deiner Schutzgeldläden übernehmen.'),
+      protectionChallenge: { shopKey, label: shopLabel(shopKey) },
+    };
+    events.push(`${shopLabel(shopKey)}: Rivalen fordern Dich heraus.`);
+  } else if (eventRoll < 0.45) {
     next = addLog({ ...next, stats: { ...next.stats, reputation: clamp(next.stats.reputation + 1, 0, 99) } }, 'Dein Name fällt in mehr Hinterzimmern.');
     events.push('Gerüchte: Straßenruf +1.');
   }
@@ -1804,6 +1864,39 @@ export function resolvePoliceCheck(state: GameState, option: 'flee' | 'bribe' | 
     'Rangpunkte sinken leicht.',
     'Fahndung kühlt etwas ab.',
   ]);
+}
+
+export function resolveProtectionChallenge(state: GameState, option: 'ignore' | 'negotiate' | 'fight'): ActionResult {
+  const challenge = state.protectionChallenge;
+  if (!challenge) return { state };
+  if (option === 'fight') {
+    const next = addLog({ ...state, protectionChallenge: undefined }, `${challenge.label}: Du stellst Dich den Rivalen.`);
+    return { state: next, combat: makeCombat(next, 'rival', 'rival', 'gang-war', challenge.shopKey) };
+  }
+  if (option === 'negotiate') {
+    const effective = getEffectiveStats(state);
+    const chance = clamp((effective.planning + effective.intimidation) / 140, 0.2, 0.75);
+    const ok = Math.random() < chance;
+    const next: GameState = {
+      ...state,
+      protectionChallenge: undefined,
+      shopProtections: ok ? state.shopProtections : { ...state.shopProtections, [challenge.shopKey]: 'protectedByRival' },
+      stats: {
+        ...state.stats,
+        money: clamp(state.stats.money - 450, 0, 999999),
+        reputation: clamp(state.stats.reputation + (ok ? 1 : -2), 0, 99),
+        danger: clamp(state.stats.danger + (ok ? 0 : 1), 0, 10),
+      },
+    };
+    return { state: withResult(addLog(next, ok ? `${challenge.label}: Verhandlung hält die Rivalen fern.` : `${challenge.label}: Die Rivalen nehmen den Laden.`), ok ? 'Verhandelt' : 'Schutz verloren', ok ? ['Du zahlst $450 für Ruhe.', 'Schutz bleibt bestehen.', 'Straßenruf +1.'] : ['Du zahlst $450, aber die Rivalen übernehmen.', 'Straßenruf -2.', 'Gefahr +1.']) };
+  }
+  const next: GameState = {
+    ...state,
+    protectionChallenge: undefined,
+    shopProtections: { ...state.shopProtections, [challenge.shopKey]: 'protectedByRival' },
+    stats: { ...state.stats, reputation: clamp(state.stats.reputation - 2, 0, 99), danger: clamp(state.stats.danger + 1, 0, 10) },
+  };
+  return { state: withResult(addLog(next, `${challenge.label}: Du ignorierst die Rivalen. Der Laden ist weg.`), 'Schutz verloren', ['Rivalen übernehmen den Laden.', 'Straßenruf -2.', 'Gefahr +1.']) };
 }
 
 interface CombatScenarioConfig {
@@ -1943,7 +2036,21 @@ function isCombatCellBlocked(combat: CombatState, x: number, y: number, ignoreId
   return false;
 }
 
-export function makeCombat(state: GameState, kind: 'police' | 'rival', scenarioId: CombatScenarioId = kind): CombatState {
+function nextEnemyStep(combat: CombatState, enemies: CombatEnemy[], allies: CombatAlly[], enemy: CombatEnemy, target: CombatAlly): { x: number; y: number } | undefined {
+  const candidates = [
+    { x: enemy.x + Math.sign((target.x ?? 0) - enemy.x), y: enemy.y },
+    { x: enemy.x, y: enemy.y + Math.sign((target.y ?? 0) - enemy.y) },
+    { x: enemy.x + 1, y: enemy.y },
+    { x: enemy.x - 1, y: enemy.y },
+    { x: enemy.x, y: enemy.y + 1 },
+    { x: enemy.x, y: enemy.y - 1 },
+  ];
+  return candidates
+    .filter((candidate) => !isCombatCellBlocked({ ...combat, allies, enemies }, candidate.x, candidate.y, enemy.id))
+    .sort((a, b) => combatDistance(a, { x: target.x ?? 0, y: target.y ?? 0 }) - combatDistance(b, { x: target.x ?? 0, y: target.y ?? 0 }))[0];
+}
+
+export function makeCombat(state: GameState, kind: 'police' | 'rival', scenarioId: CombatScenarioId = kind, sourceActionId?: ActionId, sourceShopKey?: string): CombatState {
   const scenario = combatScenarios[scenarioId];
   const occupied = new Set<string>();
   const playerSpawn = findOpenSpawn(scenario.allySpawns, occupied, scenario.terrain);
@@ -1991,6 +2098,8 @@ export function makeCombat(state: GameState, kind: 'police' | 'rival', scenarioI
     title: scenario.title,
     phase: 'player',
     selectedId: allies[0]?.id,
+    sourceActionId,
+    sourceShopKey,
     allies,
     enemies,
     terrain: scenario.terrain,
@@ -2006,6 +2115,7 @@ export function combatMove(combat: CombatState, id: string, dx: number, dy: numb
   if (isCombatCellBlocked(combat, x, y, id)) return { ...combat, message: 'Feld blockiert.' };
   return {
     ...combat,
+    fx: undefined,
     allies: combat.allies.map((unit) => unit.id === id ? { ...unit, x, y } : unit),
     phase: 'enemy',
     message: `${ally.nickname} bewegt sich in Deckung.`,
@@ -2023,13 +2133,14 @@ export function combatAttack(combat: CombatState, attackerId: string, enemyId: s
   const hit = Math.random() * 100 < clamp(weapon.accuracy + attacker.shooting * 0.35 + attacker.brutality * 0.12 - distance * 5, 5, 95);
   const damage = hit ? weapon.damage + attacker.strength * 2 : 0;
   const enemies = combat.enemies.map((target) => target.id === enemyId ? { ...target, health: target.health - damage } : target).filter((target) => target.health > 0);
-  return { ...combat, enemies, phase: enemies.length ? 'enemy' : 'finished', message: hit ? `${attacker.nickname} trifft für ${damage}.` : `${attacker.nickname} verfehlt.` };
+  return { ...combat, enemies, fx: { attackerId, targetId: enemyId, hit }, phase: enemies.length ? 'enemy' : 'finished', message: hit ? `* ${attacker.nickname} trifft ${enemy.name} für ${damage}.` : `* ${attacker.nickname} verfehlt ${enemy.name}.` };
 }
 
 export function combatEnemyTurn(combat: CombatState): CombatState {
   let allies = [...combat.allies];
   let enemies = [...combat.enemies];
   const messages: string[] = [];
+  let fx: CombatState['fx'];
   for (const enemy of enemies) {
     const target = allies
       .map((ally) => ({ ally, distance: combatDistance(enemy, { x: ally.x ?? 0, y: ally.y ?? 0 }) }))
@@ -2041,19 +2152,15 @@ export function combatEnemyTurn(combat: CombatState): CombatState {
       const damage = weapon.damage * 0.35 + enemy.strength;
       if (Math.random() * 100 < clamp(weapon.accuracy - distance * 5, 8, 75)) {
         allies = allies.map((ally) => ally.id === target.id ? { ...ally, health: ally.health - damage } : ally);
-        messages.push(`${enemy.name} trifft aus Entfernung ${distance}.`);
+        messages.push(`${enemy.name} trifft ${target.nickname}.`);
+        fx = { attackerId: enemy.id, targetId: target.id, hit: true };
       } else {
         messages.push(`${enemy.name} verfehlt.`);
+        fx = { attackerId: enemy.id, targetId: target.id, hit: false };
       }
       continue;
     }
-    const stepX = Math.sign((target.x ?? 0) - enemy.x);
-    const stepY = Math.sign((target.y ?? 0) - enemy.y);
-    const candidates = [
-      { x: enemy.x + stepX, y: enemy.y },
-      { x: enemy.x, y: enemy.y + stepY },
-    ];
-    const next = candidates.find((candidate) => !isCombatCellBlocked({ ...combat, allies, enemies }, candidate.x, candidate.y, enemy.id));
+    const next = nextEnemyStep(combat, enemies, allies, enemy, target);
     if (next) {
       enemies = enemies.map((unit) => unit.id === enemy.id ? { ...unit, x: next.x, y: next.y } : unit);
       messages.push(`${enemy.name} rückt vor.`);
@@ -2062,14 +2169,20 @@ export function combatEnemyTurn(combat: CombatState): CombatState {
     }
   }
   allies = allies.filter((ally) => ally.health > 0);
-  return { ...combat, allies, enemies, phase: allies.length ? 'player' : 'finished', selectedId: allies[0]?.id, message: allies.length ? messages.slice(0, 2).join(' ') || 'Der Gegner bewegt sich. Du bist dran.' : 'Du und Deine Leute liegen am Boden.' };
+  return { ...combat, allies, enemies, fx, phase: allies.length ? 'player' : 'finished', selectedId: allies[0]?.id, message: allies.length ? messages.slice(0, 2).join(' ') || 'Der Gegner bewegt sich. Du bist dran.' : 'Du und Deine Leute liegen am Boden.' };
 }
 
 export function finishCombat(state: GameState, combat: CombatState): GameState {
   const won = combat.enemies.length === 0 && combat.allies.length > 0;
   const aliveIds = new Set(combat.allies.map((ally) => ally.id));
   const playerSurvived = aliveIds.has('player');
-  const rankPoints = won ? awardRankPoints(state, combat.kind === 'police' ? 2 : 3) : { state: { ...state, points: clamp(state.points - 4, 0, 120) }, gained: 0, capped: false };
+  const action = combat.sourceActionId ? getAction(combat.sourceActionId) : undefined;
+  const rankPoints = won
+    ? awardRankPoints(state, action?.pointEffect ?? (combat.kind === 'police' ? 2 : 3))
+    : { state: { ...state, points: clamp(state.points - 4, 0, 120) }, gained: 0, capped: false };
+  const reward = won && action?.reward ? action.reward[0] + Math.floor(Math.random() * (action.reward[1] - action.reward[0] + 1)) : 0;
+  const sourceWanted = won && action ? Math.max(1, action.policeRisk) : 0;
+  const sourceDanger = won && action ? action.danger ?? 1 : 0;
   let next: GameState = {
     ...rankPoints.state,
     screen: 'game',
@@ -2083,14 +2196,21 @@ export function finishCombat(state: GameState, combat: CombatState): GameState {
     stats: {
       ...rankPoints.state.stats,
       health: won && playerSurvived ? clamp(combat.allies.find((ally) => ally.id === 'player')?.health ?? state.stats.health, 1, 100) : clamp(state.stats.health - 25, 1, 100),
-      money: clamp(state.stats.money + (won ? 2200 : -1200), 0, 999999),
-      reputation: clamp(state.stats.reputation + (won ? 6 : -4), 0, 99),
-      wanted: clamp(state.stats.wanted + (combat.kind === 'police' ? 2 : 1), 0, 10),
-      danger: clamp(state.stats.danger + (won ? 2 : 0), 0, 10),
+      money: clamp(state.stats.money + (won ? (action ? reward : 2200) : -1200), 0, 999999),
+      reputation: clamp(state.stats.reputation + (won ? (action?.reputationEffect ?? 6) : -4), 0, 99),
+      wanted: clamp(state.stats.wanted + (won ? (action ? sourceWanted : combat.kind === 'police' ? 2 : 1) : combat.kind === 'police' ? 2 : 1), 0, 10),
+      danger: clamp(state.stats.danger + (won ? sourceDanger || 2 : 0), 0, 10),
     },
+    shopProtections: combat.sourceShopKey
+      ? { ...state.shopProtections, [combat.sourceShopKey]: won ? 'protectedByPlayer' : 'protectedByRival' }
+      : state.shopProtections,
   };
-  next = addLog(next, won ? 'Du gewinnst den Kampf. Die Straße merkt sich die Lektion.' : 'Niederlage. Geld, Straßenruf und Leute gehen verloren.');
-  return withResult(next, won ? 'Kampf gewonnen' : 'Kampf verloren', won
-    ? ['Die Bande gewinnt.', `Rangpunkte +${rankPoints.gained}.`, rankPoints.capped ? 'Mehr Ruhm holst Du diesen Monat nicht aus der Straße.' : `Monatslimit: ${next.monthlyPointGain}/${MONTHLY_POINT_CAP}.`, 'Straßenruf steigt, Gefahr steigt.']
-    : ['Niederlage ist nicht das Ende.', 'Geld und Rangpunkte verloren.', combat.kind === 'police' ? 'Einige Leute können verhaftet werden.' : 'Einige Leute sind verletzt.']);
+  const wonLines = action
+    ? [`${action.name} gelingt nach dem Kampf.`, reward ? `Beute: ${formatMoney(reward)}.` : 'Die Straße gehört Dir.', `Rangpunkte +${rankPoints.gained}.`, rankPoints.capped ? 'Mehr Ruhm holst Du diesen Monat nicht aus der Straße.' : `Monatslimit: ${next.monthlyPointGain}/${MONTHLY_POINT_CAP}.`, `Straßenruf +${action.reputationEffect}.`, combat.sourceShopKey ? `${shopLabel(combat.sourceShopKey)} steht unter Deinem Schutz.` : `Fahndung +${sourceWanted}.`]
+    : ['Die Bande gewinnt.', `Rangpunkte +${rankPoints.gained}.`, rankPoints.capped ? 'Mehr Ruhm holst Du diesen Monat nicht aus der Straße.' : `Monatslimit: ${next.monthlyPointGain}/${MONTHLY_POINT_CAP}.`, 'Straßenruf steigt, Gefahr steigt.'];
+  const lostLines = action
+    ? [`${action.name} scheitert im Kugelhagel.`, 'Keine Beute.', 'Geld, Straßenruf und Rangpunkte verloren.', combat.kind === 'police' ? 'Einige Leute können verhaftet werden.' : 'Einige Leute sind verletzt.']
+    : ['Niederlage ist nicht das Ende.', 'Geld und Rangpunkte verloren.', combat.kind === 'police' ? 'Einige Leute können verhaftet werden.' : 'Einige Leute sind verletzt.'];
+  next = addLog(next, won ? (action ? `${action.name} gelingt nach Kampf.` : 'Du gewinnst den Kampf. Die Straße merkt sich die Lektion.') : 'Niederlage. Geld, Straßenruf und Leute gehen verloren.');
+  return withResult(next, won ? 'Kampf gewonnen' : 'Kampf verloren', won ? wonLines : lostLines);
 }
