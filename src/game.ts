@@ -33,6 +33,8 @@ export type WeaponId = 'none' | 'colt1911' | 'savage1907' | 'remington11' | 'win
 export type CarId = 'foot' | 'talbot90' | 'chevyRoadster' | 'buickCentury' | 'auburn120' | 'citroenTa';
 export type Screen = 'menu' | 'game' | 'gang' | 'combat' | 'won' | 'lost';
 export type RankName = 'Anfänger' | 'Schläger' | 'Kleiner Fisch' | 'Langfinger' | 'Ganove' | 'Mafiosi' | 'Bullenschreck' | 'Meuchelmörder' | 'Gangsterboss' | 'Rechte Hand' | 'Der Pate';
+export type CombatScenarioId = 'police' | 'bank' | 'station' | 'harbor' | 'villa' | 'rival';
+export type CombatTerrain = 'floor' | 'street' | 'desk' | 'counter' | 'crate' | 'wall' | 'platform';
 export type ActionId =
   | 'beg'
   | 'shop-robbery'
@@ -209,12 +211,13 @@ export interface CombatEnemy {
 
 export interface CombatState {
   kind: 'police' | 'rival';
+  scenario: CombatScenarioId;
   title: string;
   phase: 'player' | 'enemy' | 'finished';
   selectedId?: string;
   allies: GangMember[];
   enemies: CombatEnemy[];
-  obstacles: Array<{ x: number; y: number }>;
+  terrain: Array<{ x: number; y: number; type: CombatTerrain; icon: string; blocks: boolean }>;
   message: string;
 }
 
@@ -259,6 +262,8 @@ export const SAVE_KEY = 'unterwelt-1929-save';
 export const MAP_WIDTH = 32;
 export const MAP_HEIGHT = 24;
 export const MAP_SIZE = MAP_WIDTH;
+export const COMBAT_WIDTH = 12;
+export const COMBAT_HEIGHT = 8;
 
 export const ranks: Array<{ name: RankName; points: number }> = [
   { name: 'Anfänger', points: 0 },
@@ -298,7 +303,7 @@ export const weapons: WeaponConfig[] = [
     brutalityBonus: 0,
     intimidationBonus: 1,
     reputationBonus: 0,
-    range: 4,
+    range: 5,
     accuracy: 58,
     damage: 24,
     requiredStats: [{ stat: 'brutality', min: 20 }],
@@ -329,7 +334,7 @@ export const weapons: WeaponConfig[] = [
     intimidationBonus: 2,
     reputationBonus: 0,
     range: 4,
-    accuracy: 52,
+    accuracy: 54,
     damage: 38,
     requiredStats: [{ rank: 'Kleiner Fisch' }, { stat: 'brutality', min: 35 }],
     description: 'Halbautomatische Schrotflinte für Gespräche, die niemand fortsetzen soll.',
@@ -358,7 +363,7 @@ export const weapons: WeaponConfig[] = [
     brutalityBonus: 0,
     intimidationBonus: 1,
     reputationBonus: 0,
-    range: 5,
+    range: 6,
     accuracy: 70,
     damage: 28,
     requiredStats: [{ rank: 'Kleiner Fisch' }, { stat: 'intelligence', min: 30 }],
@@ -373,7 +378,7 @@ export const weapons: WeaponConfig[] = [
     brutalityBonus: 0,
     intimidationBonus: 4,
     reputationBonus: 0,
-    range: 6,
+    range: 7,
     accuracy: 48,
     damage: 55,
     requiredStats: [{ rank: 'Mafiosi' }, { stat: 'brutality', min: 55 }],
@@ -388,7 +393,7 @@ export const weapons: WeaponConfig[] = [
     brutalityBonus: 0,
     intimidationBonus: 5,
     reputationBonus: 0,
-    range: 8,
+    range: 9,
     accuracy: 44,
     damage: 70,
     requiredStats: [{ rank: 'Bullenschreck' }, { stat: 'strength', min: 60 }],
@@ -1521,33 +1526,179 @@ export function resolvePoliceCheck(state: GameState, option: 'flee' | 'bribe' | 
   ]);
 }
 
-export function makeCombat(state: GameState, kind: 'police' | 'rival'): CombatState {
-  const allies = activeGang(state.gang).slice(0, 4).map((member, index) => ({ ...member, x: 0, y: index + 1 }));
-  const enemies = Array.from({ length: kind === 'police' ? 3 : 4 }, (_, index) => ({
+interface CombatScenarioConfig {
+  id: CombatScenarioId;
+  title: string;
+  terrain: CombatState['terrain'];
+  allySpawns: Array<{ x: number; y: number }>;
+  enemySpawns: Array<{ x: number; y: number }>;
+}
+
+const combatScenarios: Record<CombatScenarioId, CombatScenarioConfig> = {
+  police: {
+    id: 'police',
+    title: 'Schusswechsel im Polizeirevier',
+    terrain: [
+      ...terrainLine(4, 0, 4, 2, 'desk', '=='),
+      ...terrainLine(7, 0, 7, 2, 'desk', '=='),
+      ...terrainLine(5, 4, 8, 4, 'wall', '##'),
+      { x: 10, y: 1, type: 'wall', icon: '##', blocks: true },
+      { x: 10, y: 2, type: 'wall', icon: '##', blocks: true },
+      { x: 3, y: 6, type: 'crate', icon: '[]', blocks: true },
+      { x: 8, y: 6, type: 'crate', icon: '[]', blocks: true },
+    ],
+    allySpawns: leftSpawns(),
+    enemySpawns: rightSpawns(),
+  },
+  bank: {
+    id: 'bank',
+    title: 'Schusswechsel in der Bank',
+    terrain: [
+      ...terrainLine(5, 1, 5, 6, 'counter', '=='),
+      { x: 8, y: 3, type: 'wall', icon: '##', blocks: true },
+      { x: 8, y: 4, type: 'wall', icon: '##', blocks: true },
+      { x: 3, y: 2, type: 'desk', icon: '==', blocks: true },
+      { x: 3, y: 5, type: 'desk', icon: '==', blocks: true },
+    ],
+    allySpawns: leftSpawns(),
+    enemySpawns: rightSpawns(),
+  },
+  station: {
+    id: 'station',
+    title: 'Schusswechsel am Bahnhof',
+    terrain: [
+      ...terrainLine(0, 2, COMBAT_WIDTH - 1, 2, 'platform', '::', false),
+      ...terrainLine(0, 5, COMBAT_WIDTH - 1, 5, 'platform', '::', false),
+      { x: 4, y: 3, type: 'crate', icon: '[]', blocks: true },
+      { x: 7, y: 4, type: 'crate', icon: '[]', blocks: true },
+      { x: 9, y: 2, type: 'desk', icon: '==', blocks: true },
+    ],
+    allySpawns: leftSpawns(),
+    enemySpawns: rightSpawns(),
+  },
+  harbor: {
+    id: 'harbor',
+    title: 'Schusswechsel im Hafenlager',
+    terrain: [
+      ...terrainLine(4, 1, 4, 6, 'crate', '[]'),
+      ...terrainLine(8, 2, 8, 6, 'crate', '[]'),
+      { x: 6, y: 0, type: 'wall', icon: '##', blocks: true },
+      { x: 6, y: 7, type: 'wall', icon: '##', blocks: true },
+    ],
+    allySpawns: leftSpawns(),
+    enemySpawns: rightSpawns(),
+  },
+  villa: {
+    id: 'villa',
+    title: 'Schusswechsel in der Villa',
+    terrain: [
+      ...terrainLine(2, 0, 9, 0, 'wall', '##'),
+      ...terrainLine(2, 7, 9, 7, 'wall', '##'),
+      { x: 5, y: 3, type: 'desk', icon: '==', blocks: true },
+      { x: 6, y: 3, type: 'desk', icon: '==', blocks: true },
+      { x: 7, y: 5, type: 'crate', icon: '[]', blocks: true },
+    ],
+    allySpawns: leftSpawns(),
+    enemySpawns: rightSpawns(),
+  },
+  rival: {
+    id: 'rival',
+    title: 'Bandenkrieg im Hinterhof',
+    terrain: [
+      ...terrainLine(5, 0, 5, 2, 'wall', '##'),
+      ...terrainLine(6, 5, 6, 7, 'wall', '##'),
+      { x: 3, y: 3, type: 'crate', icon: '[]', blocks: true },
+      { x: 4, y: 5, type: 'crate', icon: '[]', blocks: true },
+      { x: 8, y: 2, type: 'crate', icon: '[]', blocks: true },
+      { x: 9, y: 4, type: 'crate', icon: '[]', blocks: true },
+    ],
+    allySpawns: leftSpawns(),
+    enemySpawns: rightSpawns(),
+  },
+};
+
+function leftSpawns(): Array<{ x: number; y: number }> {
+  return [1, 2, 3, 4, 5].map((y) => ({ x: 1, y }));
+}
+
+function rightSpawns(): Array<{ x: number; y: number }> {
+  return [1, 2, 3, 4, 5, 6].map((y) => ({ x: COMBAT_WIDTH - 2, y }));
+}
+
+function terrainLine(x1: number, y1: number, x2: number, y2: number, type: CombatTerrain, icon: string, blocks = true): CombatState['terrain'] {
+  const tiles: CombatState['terrain'] = [];
+  const dx = Math.sign(x2 - x1);
+  const dy = Math.sign(y2 - y1);
+  let x = x1;
+  let y = y1;
+  tiles.push({ x, y, type, icon, blocks });
+  while (x !== x2 || y !== y2) {
+    if (x !== x2) x += dx;
+    if (y !== y2) y += dy;
+    tiles.push({ x, y, type, icon, blocks });
+  }
+  return tiles;
+}
+
+function findOpenSpawn(spawns: Array<{ x: number; y: number }>, occupied: Set<string>, terrain: CombatState['terrain']): { x: number; y: number } {
+  return spawns.find((spawn) => !occupied.has(`${spawn.x}-${spawn.y}`) && !terrain.some((tile) => tile.blocks && tile.x === spawn.x && tile.y === spawn.y)) ?? spawns[0] ?? { x: 0, y: 0 };
+}
+
+function combatDistance(a: { x?: number; y?: number }, b: { x: number; y: number }): number {
+  return Math.abs((a.x ?? 0) - b.x) + Math.abs((a.y ?? 0) - b.y);
+}
+
+function isCombatCellBlocked(combat: CombatState, x: number, y: number, ignoreId?: string): boolean {
+  if (x < 0 || x >= COMBAT_WIDTH || y < 0 || y >= COMBAT_HEIGHT) return true;
+  if (combat.terrain.some((tile) => tile.blocks && tile.x === x && tile.y === y)) return true;
+  if (combat.allies.some((unit) => unit.id !== ignoreId && unit.x === x && unit.y === y)) return true;
+  if (combat.enemies.some((unit) => unit.id !== ignoreId && unit.x === x && unit.y === y)) return true;
+  return false;
+}
+
+export function makeCombat(state: GameState, kind: 'police' | 'rival', scenarioId: CombatScenarioId = kind): CombatState {
+  const scenario = combatScenarios[scenarioId];
+  const occupied = new Set<string>();
+  const allies = activeGang(state.gang).slice(0, 5).map((member, index) => {
+    const spawn = findOpenSpawn(scenario.allySpawns.slice(index), occupied, scenario.terrain);
+    occupied.add(`${spawn.x}-${spawn.y}`);
+    return { ...member, x: spawn.x, y: spawn.y };
+  });
+  const enemies = Array.from({ length: kind === 'police' ? 4 : 5 }, (_, index) => {
+    const spawn = findOpenSpawn(scenario.enemySpawns.slice(index), occupied, scenario.terrain);
+    occupied.add(`${spawn.x}-${spawn.y}`);
+    return {
     id: crypto.randomUUID(),
     name: kind === 'police' ? `Schupo ${index + 1}` : `Rivale ${index + 1}`,
     health: 42 + state.stats.danger * 7,
     strength: 4 + state.stats.danger,
     weapon: (index % 2 ? 'colt1911' : 'none') as WeaponId,
-    x: 5,
-    y: index + 1,
-  }));
+      x: spawn.x,
+      y: spawn.y,
+    };
+  });
   return {
     kind,
-    title: kind === 'police' ? 'Schusswechsel mit der Polizei' : 'Bandenkrieg',
+    scenario: scenario.id,
+    title: scenario.title,
     phase: 'player',
     selectedId: allies[0]?.id,
     allies,
     enemies,
-    obstacles: [{ x: 2, y: 1 }, { x: 3, y: 2 }, { x: 2, y: 3 }, { x: 4, y: 0 }],
+    terrain: scenario.terrain,
     message: allies.length ? 'Wähle Leute, bewege sie oder greife an.' : 'Ohne aktive Gang ist das Selbstmord.',
   };
 }
 
 export function combatMove(combat: CombatState, id: string, dx: number, dy: number): CombatState {
+  const ally = combat.allies.find((unit) => unit.id === id);
+  if (!ally || combat.phase !== 'player') return combat;
+  const x = clamp((ally.x ?? 0) + dx, 0, COMBAT_WIDTH - 1);
+  const y = clamp((ally.y ?? 0) + dy, 0, COMBAT_HEIGHT - 1);
+  if (isCombatCellBlocked(combat, x, y, id)) return { ...combat, message: 'Feld blockiert.' };
   return {
     ...combat,
-    allies: combat.allies.map((ally) => ally.id === id ? { ...ally, x: clamp((ally.x ?? 0) + dx, 0, 5), y: clamp((ally.y ?? 0) + dy, 0, 4) } : ally),
+    allies: combat.allies.map((unit) => unit.id === id ? { ...unit, x, y } : unit),
     message: 'Bewegt. Angriffe bleiben möglich.',
   };
 }
@@ -1557,9 +1708,9 @@ export function combatAttack(combat: CombatState, attackerId: string, enemyId: s
   const enemy = combat.enemies.find((target) => target.id === enemyId);
   if (!attacker || !enemy) return combat;
   const weapon = getWeapon(attacker.weapon);
-  const distance = Math.abs((attacker.x ?? 0) - enemy.x) + Math.abs((attacker.y ?? 0) - enemy.y);
-  if (distance > weapon.range) return { ...combat, message: 'Ziel außer Reichweite.' };
-  const hit = Math.random() * 100 < clamp(weapon.accuracy + attacker.shooting * 0.35 + attacker.brutality * 0.12 - distance * 8, 5, 95);
+  const distance = combatDistance(attacker, enemy);
+  if (distance > weapon.range) return { ...combat, message: `Ziel außer Reichweite. Entfernung ${distance}, Reichweite ${weapon.range}.` };
+  const hit = Math.random() * 100 < clamp(weapon.accuracy + attacker.shooting * 0.35 + attacker.brutality * 0.12 - distance * 5, 5, 95);
   const damage = hit ? weapon.damage + attacker.strength * 2 : 0;
   const enemies = combat.enemies.map((target) => target.id === enemyId ? { ...target, health: target.health - damage } : target).filter((target) => target.health > 0);
   return { ...combat, enemies, phase: enemies.length ? 'enemy' : 'finished', message: hit ? `${attacker.nickname} trifft für ${damage}.` : `${attacker.nickname} verfehlt.` };
@@ -1567,14 +1718,41 @@ export function combatAttack(combat: CombatState, attackerId: string, enemyId: s
 
 export function combatEnemyTurn(combat: CombatState): CombatState {
   let allies = [...combat.allies];
-  for (const enemy of combat.enemies) {
-    const target = allies[Math.floor(Math.random() * allies.length)];
+  let enemies = [...combat.enemies];
+  const messages: string[] = [];
+  for (const enemy of enemies) {
+    const target = allies
+      .map((ally) => ({ ally, distance: combatDistance(enemy, { x: ally.x ?? 0, y: ally.y ?? 0 }) }))
+      .sort((a, b) => a.distance - b.distance)[0]?.ally;
     if (!target) break;
-    const damage = getWeapon(enemy.weapon).damage * 0.35 + enemy.strength;
-    if (Math.random() < 0.58) allies = allies.map((ally) => ally.id === target.id ? { ...ally, loyalty: ally.loyalty - damage / 10 } : ally);
+    const weapon = getWeapon(enemy.weapon);
+    const distance = combatDistance(enemy, { x: target.x ?? 0, y: target.y ?? 0 });
+    if (distance <= weapon.range) {
+      const damage = weapon.damage * 0.35 + enemy.strength;
+      if (Math.random() * 100 < clamp(weapon.accuracy - distance * 5, 8, 75)) {
+        allies = allies.map((ally) => ally.id === target.id ? { ...ally, loyalty: ally.loyalty - damage / 10 } : ally);
+        messages.push(`${enemy.name} trifft aus Entfernung ${distance}.`);
+      } else {
+        messages.push(`${enemy.name} verfehlt.`);
+      }
+      continue;
+    }
+    const stepX = Math.sign((target.x ?? 0) - enemy.x);
+    const stepY = Math.sign((target.y ?? 0) - enemy.y);
+    const candidates = [
+      { x: enemy.x + stepX, y: enemy.y },
+      { x: enemy.x, y: enemy.y + stepY },
+    ];
+    const next = candidates.find((candidate) => !isCombatCellBlocked({ ...combat, allies, enemies }, candidate.x, candidate.y, enemy.id));
+    if (next) {
+      enemies = enemies.map((unit) => unit.id === enemy.id ? { ...unit, x: next.x, y: next.y } : unit);
+      messages.push(`${enemy.name} rückt vor.`);
+    } else {
+      messages.push(`${enemy.name} findet keinen freien Weg.`);
+    }
   }
   allies = allies.filter((ally) => ally.loyalty > 0);
-  return { ...combat, allies, phase: allies.length ? 'player' : 'finished', selectedId: allies[0]?.id, message: allies.length ? 'Der Gegner hat geschossen. Du bist dran.' : 'Deine Leute liegen am Boden.' };
+  return { ...combat, allies, enemies, phase: allies.length ? 'player' : 'finished', selectedId: allies[0]?.id, message: allies.length ? messages.slice(0, 2).join(' ') || 'Der Gegner bewegt sich. Du bist dran.' : 'Deine Leute liegen am Boden.' };
 }
 
 export function finishCombat(state: GameState, combat: CombatState): GameState {

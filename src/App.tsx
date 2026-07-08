@@ -19,6 +19,8 @@ import {
   combatAttack,
   combatEnemyTurn,
   combatMove,
+  COMBAT_HEIGHT,
+  COMBAT_WIDTH,
   describeAction,
   equipMember,
   finishCombat,
@@ -358,16 +360,16 @@ function App() {
           <button onClick={() => setGame((prev) => prev.combat ? finishCombat(prev, prev.combat) : prev)}>Kampf beenden</button>
         </header>
         <section className="combatLayout">
-          <div className="combatGrid">
-            {Array.from({ length: 30 }, (_, index) => {
-              const x = index % 6;
-              const y = Math.floor(index / 6);
+          <div className="combatGrid" style={{ gridTemplateColumns: `repeat(${COMBAT_WIDTH}, minmax(0, 1fr))` }}>
+            {Array.from({ length: COMBAT_WIDTH * COMBAT_HEIGHT }, (_, index) => {
+              const x = index % COMBAT_WIDTH;
+              const y = Math.floor(index / COMBAT_WIDTH);
               const ally = game.combat?.allies.find((unit) => unit.x === x && unit.y === y);
               const enemy = game.combat?.enemies.find((unit) => unit.x === x && unit.y === y);
-              const obstacle = game.combat?.obstacles.some((item) => item.x === x && item.y === y);
+              const terrain = game.combat?.terrain.find((item) => item.x === x && item.y === y);
               return (
-                <button key={`${x}-${y}`} className={`combatCell ${ally ? 'ally' : ''} ${enemy ? 'enemy' : ''} ${obstacle ? 'obstacle' : ''}`} onClick={() => ally && setGame((prev) => prev.combat ? { ...prev, combat: { ...prev.combat, selectedId: ally.id } } : prev)}>
-                  {ally ? ally.nickname.slice(0, 2).toUpperCase() : enemy ? '!!' : obstacle ? '##' : '..'}
+                <button key={`${x}-${y}`} className={`combatCell terrain-${terrain?.type ?? 'floor'} ${terrain?.blocks ? 'obstacle' : ''} ${ally ? 'ally' : ''} ${enemy ? 'enemy' : ''}`} onClick={() => ally && setGame((prev) => prev.combat ? { ...prev, combat: { ...prev.combat, selectedId: ally.id } } : prev)}>
+                  {ally ? ally.nickname.slice(0, 2).toUpperCase() : enemy ? '!!' : terrain ? terrain.icon : '..'}
                 </button>
               );
             })}
@@ -375,6 +377,11 @@ function App() {
           <aside className="panel">
             <h2>Kommando</h2>
             <p>{game.combat.message}</p>
+            {selected && (
+              <p className="combatWeapon">
+                {getWeapon(selected.weapon).name}: Reichweite {getWeapon(selected.weapon).range}, Genauigkeit {getWeapon(selected.weapon).accuracy}%, Schaden {getWeapon(selected.weapon).damage}
+              </p>
+            )}
             <div className="unitList">
               {game.combat.allies.map((ally) => (
                 <button key={ally.id} className={ally.id === game.combat?.selectedId ? 'selectedRow' : ''} onClick={() => setGame((prev) => prev.combat ? { ...prev, combat: { ...prev.combat, selectedId: ally.id } } : prev)}>
@@ -386,7 +393,7 @@ function App() {
             <div className="unitList">
               {game.combat.enemies.map((enemy) => (
                 <button key={enemy.id} disabled={!selected || game.combat?.phase !== 'player'} onClick={() => selected && setGame((prev) => prev.combat ? { ...prev, combat: combatAttack(prev.combat, selected.id, enemy.id) } : prev)}>
-                  {enemy.name} HP {Math.ceil(enemy.health)}
+                  {enemyTargetLabel(selected, enemy)}
                 </button>
               ))}
             </div>
@@ -604,6 +611,13 @@ function formatRequirements(requirements: Requirement[]): string {
 
 function isActionResult(value: GameState | ActionResult): value is ActionResult {
   return 'state' in value;
+}
+
+function enemyTargetLabel(selected: GameState['gang'][number] | undefined, enemy: NonNullable<GameState['combat']>['enemies'][number]): string {
+  if (!selected) return `${enemy.name} HP ${Math.ceil(enemy.health)}`;
+  const weapon = getWeapon(selected.weapon);
+  const distance = Math.abs((selected.x ?? 0) - enemy.x) + Math.abs((selected.y ?? 0) - enemy.y);
+  return `${enemy.name} HP ${Math.ceil(enemy.health)} / Entfernung ${distance} / ${distance <= weapon.range ? 'in Reichweite' : 'zu weit'}`;
 }
 
 function ActionList({ actions: list, game, askAction }: { actions: ActionConfig[]; game: GameState; askAction: (action: ActionConfig) => void }) {
