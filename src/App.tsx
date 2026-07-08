@@ -15,6 +15,7 @@ import {
   cars,
   actionAvailability,
   actionCost,
+  assignmentLabel,
   checkRequirements,
   clearResult,
   combatAttack,
@@ -24,6 +25,7 @@ import {
   COMBAT_WIDTH,
   describeAction,
   equipMember,
+  equipPlayer,
   finishCombat,
   fireMember,
   formatMoney,
@@ -32,6 +34,8 @@ import {
   getBuilding,
   getCar,
   getEffectiveStats,
+  getAssignedWeaponId,
+  getPlayerWeapon,
   getWeapon,
   getRank,
   healMember,
@@ -45,6 +49,8 @@ import {
   resolvePoliceCheck,
   resolveAction,
   saveGame,
+  sellValue,
+  sellWeapon,
   statLabel,
   tileVisuals,
   trainMember,
@@ -147,7 +153,7 @@ function App() {
   const askWeapon = (weaponId: WeaponId) => {
     const weapon = getWeapon(weaponId);
     const blocked = checkRequirements(game, weapon.requiredStats);
-    const owned = game.arsenal.includes(weaponId);
+    const cannotAfford = game.stats.money < weapon.price;
     confirm({
       title: `${weapon.name} kaufen?`,
       lines: [
@@ -158,10 +164,27 @@ function App() {
         `Anforderungen: ${formatRequirements(weapon.requiredStats)}`,
         `Seltenheit: ${weapon.rarity}`,
         weapon.description,
-        owned ? 'Status: bereits im Arsenal' : blocked.length ? `Fehlt: ${blocked.join(', ')}` : game.stats.money < weapon.price ? 'Fehlt: zu wenig Geld' : 'Status: kaufbar',
+        blocked.length ? `Fehlt: ${blocked.join(', ')}` : cannotAfford ? 'Fehlt: zu wenig Geld' : 'Status: kaufbar',
       ],
-      confirmLabel: owned || blocked.length ? 'Nicht möglich' : 'Kaufen',
-      onConfirm: (state) => owned || blocked.length ? state : buyWeapon(state, weaponId),
+      confirmLabel: blocked.length || cannotAfford ? 'Nicht möglich' : 'Kaufen',
+      onConfirm: (state) => blocked.length || cannotAfford ? state : buyWeapon(state, weaponId),
+    });
+  };
+
+  const askSellWeapon = (ownedWeaponId: string) => {
+    const owned = game.arsenal.find((item) => item.id === ownedWeaponId);
+    if (!owned) return;
+    const weapon = getWeapon(owned.weaponId);
+    confirm({
+      title: `${weapon.name} verkaufen?`,
+      lines: [
+        `Status: ${assignmentLabel(game, owned)}`,
+        `Neupreis: ${formatMoney(weapon.price)}`,
+        `Erlös: ${formatMoney(sellValue(owned.weaponId))}`,
+        owned.assignedTo ? 'Ausgerüstete Waffen müssen zuerst abgelegt werden.' : 'Waffe liegt frei und kann verkauft werden.',
+      ],
+      confirmLabel: owned.assignedTo ? 'Nicht möglich' : 'Verkaufen',
+      onConfirm: (state) => owned.assignedTo ? state : sellWeapon(state, ownedWeaponId),
     });
   };
 
@@ -240,29 +263,48 @@ function App() {
     });
   };
 
-  const askEquip = (memberId: string, weaponId: WeaponId) => {
+  const askEquipPlayer = (ownedWeaponId: string) => {
+    const owned = game.arsenal.find((item) => item.id === ownedWeaponId);
+    const weapon = ownedWeaponId === 'none' ? getWeapon('none') : getWeapon(owned?.weaponId ?? 'none');
+    confirm({
+      title: ownedWeaponId === 'none' ? 'Spieler entwaffnen?' : `${weapon.name} selbst ausrüsten?`,
+      lines: [
+        `Neue Waffe: ${weapon.name}`,
+        `Reichweite ${weapon.range}, Genauigkeit ${weapon.accuracy}%, Schaden ${weapon.damage}`,
+        owned && owned.assignedTo ? `Status: ${assignmentLabel(game, owned)}` : 'Status: frei',
+      ],
+      confirmLabel: owned && owned.assignedTo && owned.assignedTo !== 'player' ? 'Nicht möglich' : 'Ausrüsten',
+      onConfirm: (state) => owned && owned.assignedTo && owned.assignedTo !== 'player' ? state : equipPlayer(state, ownedWeaponId),
+    });
+  };
+
+  const askEquip = (memberId: string, ownedWeaponId: string) => {
     const member = game.gang.find((item) => item.id === memberId);
-    const weapon = getWeapon(weaponId);
+    const owned = game.arsenal.find((item) => item.id === ownedWeaponId);
+    const weapon = ownedWeaponId === 'none' ? getWeapon('none') : getWeapon(owned?.weaponId ?? 'none');
     if (!member) return;
     confirm({
       title: `${member.nickname} ausrüsten?`,
       lines: [
         `Neue Waffe: ${weapon.name}`,
         `Reichweite ${weapon.range}, Genauigkeit ${weapon.accuracy}%, Schaden ${weapon.damage}`,
+        owned && owned.assignedTo ? `Status: ${assignmentLabel(game, owned)}` : 'Status: frei',
+        `Anforderungen: ${formatRequirements(weapon.requiredStats)}`,
         'Verbessert Kämpfe und riskante Überfälle im Hintergrund.',
         'Ändert die Kampfkraft sofort.',
       ],
-      confirmLabel: 'Ausrüsten',
-      onConfirm: (state) => equipMember(state, memberId, weaponId),
+      confirmLabel: owned && owned.assignedTo && owned.assignedTo !== memberId ? 'Nicht möglich' : 'Ausrüsten',
+      onConfirm: (state) => owned && owned.assignedTo && owned.assignedTo !== memberId ? state : equipMember(state, memberId, ownedWeaponId),
     });
   };
 
   const askTrain = (memberId: string, stat: 'strength' | 'intelligence' | 'brutality' | 'shooting' | 'driving') => {
     const member = game.gang.find((item) => item.id === memberId);
     if (!member) return;
+    const label = trainingLabel(stat);
     confirm({
       title: `${member.nickname} trainieren?`,
-      lines: ['Kosten: $750', 'Schrittkosten: 2', `Verbessert ${stat} um +5.`, `Aktuelles Geld: ${formatMoney(game.stats.money)}`],
+      lines: ['Kosten: $750', 'Schrittkosten: 2', `Verbessert ${label} um +5.`, trainingExplanation(stat), `Aktuelles Geld: ${formatMoney(game.stats.money)}`],
       confirmLabel: 'Trainieren',
       onConfirm: (state) => trainMember(state, memberId, stat),
     });
@@ -387,7 +429,7 @@ function App() {
             <div className="unitList">
               {game.combat.allies.map((ally) => (
                 <button key={ally.id} className={ally.id === game.combat?.selectedId ? 'selectedRow' : ''} onClick={() => setGame((prev) => prev.combat ? { ...prev, combat: { ...prev.combat, selectedId: ally.id } } : prev)}>
-                  {ally.nickname} / {getWeapon(ally.weapon).name}
+                  {ally.nickname} / HP {Math.ceil(ally.health)} / {getWeapon(ally.weapon).name}
                 </button>
               ))}
             </div>
@@ -429,6 +471,7 @@ function App() {
           game={game}
           storyId={storyId}
           setStoryId={setStoryId}
+          askEquipPlayer={askEquipPlayer}
           askEquip={askEquip}
           askTrain={askTrain}
           askFire={askFire}
@@ -469,7 +512,7 @@ function App() {
                 <span>Schritte: {game.stepsLeft}</span>
                 <span>Fahndung: {game.stats.wanted}</span>
                 <span>Auto: {getCar(game.car).name}</span>
-                <span>Waffe: {getWeapon(game.arsenal[game.arsenal.length - 1] ?? 'none').name}</span>
+                <span>Waffe: {getPlayerWeapon(game).name}</span>
               </div>
               <div className="hint">Tasten: WASD/Pfeile bewegen, B Bande, E Monat beenden, Q speichern.</div>
             </div>
@@ -479,7 +522,7 @@ function App() {
               <h2>{locationTitle(currentTile, game.map)}</h2>
               <p>{currentBuilding?.description ?? 'Gassen, Mauern, Laternen. Nicht jeder Ort ist ein Geschäft, aber jeder Ort erzählt etwas.'}</p>
               <ActionList actions={buildingActions} game={game} askAction={askAction} />
-              {currentBuilding?.id === 'weapons' && <WeaponShop game={game} askWeapon={askWeapon} askTrainPlayer={askTrainPlayer} />}
+              {currentBuilding?.id === 'weapons' && <WeaponShop game={game} askWeapon={askWeapon} askSellWeapon={askSellWeapon} askTrainPlayer={askTrainPlayer} />}
               {currentBuilding?.id === 'cars' && <CarShop game={game} askCar={askCar} />}
               {currentBuilding?.id === 'kneipe' && <RecruitList game={game} askRecruit={searchRecruit} premium={game.hotelRoom} />}
               {currentBuilding?.id === 'hotel' && <RecruitList game={game} askRecruit={askRecruit} premium />}
@@ -612,11 +655,26 @@ function formatRequirements(requirements: Requirement[]): string {
   }).join(', ');
 }
 
+function trainingExplanation(stat: 'strength' | 'intelligence' | 'brutality' | 'shooting' | 'driving'): string {
+  if (stat === 'shooting') return 'Schießen: verbessert Trefferchance im Kampf.';
+  if (stat === 'driving') return 'Fahren: verbessert Flucht, Fahrzeugjobs und Bank/Zug/Hafen-Abgänge.';
+  if (stat === 'intelligence') return 'Planung: verbessert komplexe Coups wie Bank, Tresor, Villa und Zug.';
+  if (stat === 'strength') return 'Stärke: erhöht Nahkampfschaden und hilft beim Handling schwerer Waffen.';
+  return 'Brutalität: verbessert Einschüchterung und gewalttätige Jobs.';
+}
+
+function trainingLabel(stat: 'strength' | 'intelligence' | 'brutality' | 'shooting' | 'driving'): string {
+  if (stat === 'shooting') return 'Schießen';
+  if (stat === 'driving') return 'Fahren';
+  if (stat === 'intelligence') return 'Planung';
+  return statLabel(stat);
+}
+
 function isActionResult(value: GameState | ActionResult): value is ActionResult {
   return 'state' in value;
 }
 
-function enemyTargetLabel(selected: GameState['gang'][number] | undefined, enemy: NonNullable<GameState['combat']>['enemies'][number]): string {
+function enemyTargetLabel(selected: NonNullable<GameState['combat']>['allies'][number] | undefined, enemy: NonNullable<GameState['combat']>['enemies'][number]): string {
   if (!selected) return `${enemy.name} HP ${Math.ceil(enemy.health)}`;
   const weapon = getWeapon(selected.weapon);
   const distance = Math.abs((selected.x ?? 0) - enemy.x) + Math.abs((selected.y ?? 0) - enemy.y);
@@ -681,25 +739,28 @@ function ActionList({ actions: list, game, askAction }: { actions: ActionConfig[
 function WeaponShop({
   game,
   askWeapon,
+  askSellWeapon,
   askTrainPlayer,
 }: {
   game: GameState;
   askWeapon: (weaponId: WeaponId) => void;
+  askSellWeapon: (ownedWeaponId: string) => void;
   askTrainPlayer: (stat: 'strength' | 'intelligence' | 'brutality') => void;
 }) {
   return (
     <>
       <h3>Training</h3>
+      <p className="inlineHelp">Stärke hilft bei Nahkampf und schweren Waffen. Brutalität hilft bei Einschüchterung. Intelligenz hilft bei Planung, Dokumenten und komplexen Coups.</p>
       <div className="trainingRow">
         <button disabled={game.stepsLeft < 2} onClick={() => askTrainPlayer('strength')}>Stärke trainieren</button>
         <button disabled={game.stepsLeft < 2} onClick={() => askTrainPlayer('brutality')}>Brutalität trainieren</button>
         <button disabled={game.stepsLeft < 2} onClick={() => askTrainPlayer('intelligence')}>Intelligenz trainieren</button>
       </div>
-      <h3>Arsenal</h3>
+      <h3>Kaufen</h3>
       <div className="cardGrid">
         {weapons.filter((weapon) => weapon.id !== 'none').map((weapon) => {
           const blocked = checkRequirements(game, weapon.requiredStats);
-          const owned = game.arsenal.includes(weapon.id);
+          const ownedCount = game.arsenal.filter((owned) => owned.weaponId === weapon.id).length;
           return (
             <article className="choiceCard" key={weapon.id}>
               <h3>{weapon.name}</h3>
@@ -709,9 +770,25 @@ function WeaponShop({
                 <li>Reichweite {weapon.range}, Genauigkeit {weapon.accuracy}%, Schaden {weapon.damage}</li>
                 <li>Anforderung: {formatRequirements(weapon.requiredStats)}</li>
                 <li>Seltenheit: {weapon.rarity}</li>
-                <li>{owned ? 'Bereits gekauft' : blocked.length ? blocked[0] : 'Kaufbar'}</li>
+                <li>Besitz: {ownedCount}</li>
+                <li>{blocked.length ? blocked[0] : 'Kaufbar'}</li>
               </ul>
-              <button disabled={owned || blocked.length > 0} onClick={() => askWeapon(weapon.id)}>{owned ? 'Im Arsenal' : blocked.length ? blocked[0] : 'Kaufen'}</button>
+              <button disabled={blocked.length > 0} onClick={() => askWeapon(weapon.id)}>{blocked.length ? blocked[0] : 'Kaufen'}</button>
+            </article>
+          );
+        })}
+      </div>
+      <h3>Waffenschrank</h3>
+      <div className="inventoryList">
+        {game.arsenal.length === 0 && <p>Keine gekauften Waffen. Hände zählen nicht als Inventar.</p>}
+        {game.arsenal.map((owned) => {
+          const weapon = getWeapon(owned.weaponId);
+          return (
+            <article className="inventoryRow" key={owned.id}>
+              <span>{weapon.name}</span>
+              <span>{assignmentLabel(game, owned)}</span>
+              <span>Verkauf {formatMoney(sellValue(owned.weaponId))}</span>
+              <button disabled={Boolean(owned.assignedTo)} onClick={() => askSellWeapon(owned.id)}>{owned.assignedTo ? 'Ausgerüstet' : 'Verkaufen'}</button>
             </article>
           );
         })}
@@ -809,6 +886,7 @@ function GangScreen({
   game,
   storyId,
   setStoryId,
+  askEquipPlayer,
   askEquip,
   askTrain,
   askFire,
@@ -817,22 +895,46 @@ function GangScreen({
   game: GameState;
   storyId: string | null;
   setStoryId: (id: string | null) => void;
-  askEquip: (memberId: string, weaponId: WeaponId) => void;
+  askEquipPlayer: (ownedWeaponId: string) => void;
+  askEquip: (memberId: string, ownedWeaponId: string) => void;
   askTrain: (memberId: string, stat: 'strength' | 'intelligence' | 'brutality' | 'shooting' | 'driving') => void;
   askFire: (memberId: string) => void;
   askHealMember: (memberId: string) => void;
 }) {
+  const playerWeaponId = getAssignedWeaponId(game, 'player');
   return (
     <section className="gangScreen">
       <div className="panel gangManagement">
         <h2>Bandenverwaltung</h2>
+        <article className="gangCard playerCard">
+          <div className="portrait large">DU</div>
+          <div className="gangDetails">
+            <h3>Unbekannter aus Chicago <span>"Du"</span></h3>
+            <p>Spieler / Status: aktiv / Waffe: {getPlayerWeapon(game).name}</p>
+            <div className="statStrip">
+              <span>ST {game.stats.strength}</span>
+              <span>IN {game.stats.intelligence}</span>
+              <span>BR {game.stats.brutality}</span>
+              <span>GES {game.stats.health}</span>
+            </div>
+            <div className="gangActions">
+              <select value={playerWeaponId} onChange={(event) => askEquipPlayer(event.target.value)}>
+                <option value="none">Hände</option>
+                {game.arsenal
+                  .filter((owned) => !owned.assignedTo || owned.assignedTo === 'player')
+                  .map((owned) => <option value={owned.id} key={owned.id}>{getWeapon(owned.weaponId).name} ({assignmentLabel(game, owned)})</option>)}
+              </select>
+            </div>
+          </div>
+        </article>
+        <p className="inlineHelp">Schießen erhöht Trefferchancen. Fahren hilft Flucht, Fahrzeugjobs und Bank/Zug/Hafen. Planung hilft Bank, Tresor, Villa und Zug. Loyalität entscheidet, wer schlechte Monate übersteht.</p>
         {game.gang.length === 0 && <p>Keine Bande. Rekrutiere in Kneipe oder Hotel.</p>}
         {game.gang.map((member) => (
           <article key={member.id} className="gangCard">
             <div className="portrait large">{member.nickname.slice(0, 2).toUpperCase()}</div>
             <div className="gangDetails">
               <h3>{member.name} <span>"{member.nickname}"</span></h3>
-              <p>{member.role} / Status: {member.status} / Unterhalt {formatMoney(member.upkeep)}</p>
+              <p>{member.role} / Status: {member.status} / Gesundheit {Math.round(member.health)} / Unterhalt {formatMoney(member.upkeep)}</p>
               <div className="statStrip">
                 {statShort.map(([key, label]) => <span key={key}>{label} {memberStat(member, key)}</span>)}
               </div>
@@ -840,12 +942,17 @@ function GangScreen({
               <p><b>Schwäche:</b> {member.weakness}</p>
               {storyId === member.id && <p className="storyText">{member.story}</p>}
               <div className="gangActions">
-                <select value={member.weapon} onChange={(event) => askEquip(member.id, event.target.value as WeaponId)}>
-                  {game.arsenal.map((id) => <option value={id} key={id}>{getWeapon(id).name}</option>)}
+                <select value={getAssignedWeaponId(game, member.id)} onChange={(event) => askEquip(member.id, event.target.value)}>
+                  <option value="none">Hände</option>
+                  {game.arsenal
+                    .filter((owned) => !owned.assignedTo || owned.assignedTo === member.id)
+                    .map((owned) => <option value={owned.id} key={owned.id}>{getWeapon(owned.weaponId).name} ({assignmentLabel(game, owned)})</option>)}
                 </select>
-                <button onClick={() => askTrain(member.id, 'shooting')}>Schießen trainieren</button>
-                <button onClick={() => askTrain(member.id, 'driving')}>Fahren trainieren</button>
-                <button onClick={() => askTrain(member.id, 'intelligence')}>Planung trainieren</button>
+                <button title={trainingExplanation('shooting')} onClick={() => askTrain(member.id, 'shooting')}>Schießen trainieren</button>
+                <button title={trainingExplanation('driving')} onClick={() => askTrain(member.id, 'driving')}>Fahren trainieren</button>
+                <button title={trainingExplanation('intelligence')} onClick={() => askTrain(member.id, 'intelligence')}>Planung trainieren</button>
+                <button title={trainingExplanation('strength')} onClick={() => askTrain(member.id, 'strength')}>Stärke trainieren</button>
+                <button title={trainingExplanation('brutality')} onClick={() => askTrain(member.id, 'brutality')}>Brutalität trainieren</button>
                 <button disabled={member.status !== 'verletzt'} onClick={() => askHealMember(member.id)}>Heilen</button>
                 <button onClick={() => setStoryId(storyId === member.id ? null : member.id)}>Geschichte</button>
                 <button onClick={() => askFire(member.id)}>Feuern</button>

@@ -465,6 +465,28 @@ h3 {
   line-height: 1.35;
 }
 
+.inlineHelp {
+  margin: 0.25rem 0 0.75rem;
+  color: #8fe3a4;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.inventoryList {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.inventoryRow {
+  display: grid;
+  grid-template-columns: 1fr 0.9fr 0.8fr auto;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.45rem;
+  border: 1px solid rgba(112, 166, 255, 0.45);
+  background: rgba(9, 14, 32, 0.72);
+}
+
 .statsPanel dt {
   color: #70a6ff;
 }

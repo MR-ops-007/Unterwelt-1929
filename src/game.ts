@@ -149,8 +149,15 @@ export interface GangMemberTemplate {
 export interface GangMember extends GangMemberTemplate {
   id: string;
   status: MemberStatus;
+  health: number;
   x?: number;
   y?: number;
+}
+
+export interface OwnedWeapon {
+  id: string;
+  weaponId: WeaponId;
+  assignedTo?: string;
 }
 
 export interface BuildingConfig {
@@ -212,13 +219,32 @@ export interface CombatEnemy {
   y: number;
 }
 
+export interface CombatAlly {
+  id: string;
+  name: string;
+  nickname: string;
+  role: Role | 'Spieler';
+  status: MemberStatus;
+  health: number;
+  strength: number;
+  intelligence: number;
+  brutality: number;
+  shooting: number;
+  driving: number;
+  loyalty: number;
+  weapon: WeaponId;
+  isPlayer?: boolean;
+  x?: number;
+  y?: number;
+}
+
 export interface CombatState {
   kind: 'police' | 'rival';
   scenario: CombatScenarioId;
   title: string;
   phase: 'player' | 'enemy' | 'finished';
   selectedId?: string;
-  allies: GangMember[];
+  allies: CombatAlly[];
   enemies: CombatEnemy[];
   terrain: Array<{ x: number; y: number; type: CombatTerrain; icon: string; blocks: boolean }>;
   message: string;
@@ -245,7 +271,7 @@ export interface GameState {
   car: CarId;
   hotelRoom: boolean;
   gangFounded: boolean;
-  arsenal: WeaponId[];
+  arsenal: OwnedWeapon[];
   monthly: Record<string, boolean>;
   monthlyCrimeCount: number;
   monthlyMajorCrimeCount: number;
@@ -722,6 +748,29 @@ export function getWeapon(id: WeaponId): WeaponConfig {
   return weapons.find((weapon) => weapon.id === id) ?? weapons[0];
 }
 
+function createOwnedWeapon(weaponId: WeaponId, assignedTo?: string): OwnedWeapon {
+  return { id: crypto.randomUUID(), weaponId, assignedTo };
+}
+
+export function getPlayerWeapon(state: GameState): WeaponConfig {
+  return getWeapon(state.arsenal.find((owned) => owned.assignedTo === 'player')?.weaponId ?? 'none');
+}
+
+export function getAssignedWeaponId(state: GameState, targetId: string): string {
+  return state.arsenal.find((owned) => owned.assignedTo === targetId)?.id ?? 'none';
+}
+
+export function assignmentLabel(state: GameState, owned: OwnedWeapon): string {
+  if (!owned.assignedTo) return 'frei';
+  if (owned.assignedTo === 'player') return 'beim Spieler';
+  const member = state.gang.find((item) => item.id === owned.assignedTo);
+  return member ? `bei ${member.nickname}` : 'zugeteilt';
+}
+
+export function sellValue(weaponId: WeaponId): number {
+  return Math.floor(getWeapon(weaponId).price * 0.6);
+}
+
 export function getCar(id: CarId): CarConfig {
   return cars.find((car) => car.id === id) ?? cars[0];
 }
@@ -961,7 +1010,7 @@ export function newGame(startingStats: Pick<PlayerStats, 'strength' | 'intellige
     car,
     hotelRoom: false,
     gangFounded: false,
-    arsenal: ['none'],
+    arsenal: [],
     monthly: {},
     monthlyCrimeCount: 0,
     monthlyMajorCrimeCount: 0,
@@ -976,12 +1025,41 @@ export function newGame(startingStats: Pick<PlayerStats, 'strength' | 'intellige
   };
 }
 
+function normalizeGang(rawGang: unknown): GangMember[] {
+  if (!Array.isArray(rawGang)) return [];
+  return rawGang.map((member) => ({
+    ...member,
+    status: member.status ?? 'aktiv',
+    health: member.health ?? (member.status === 'verletzt' ? 45 : 100),
+    weapon: member.weapon ?? 'none',
+  })) as GangMember[];
+}
+
+function normalizeArsenal(rawArsenal: unknown, gang: GangMember[], legacyPlayerWeapon?: WeaponId): OwnedWeapon[] {
+  if (Array.isArray(rawArsenal) && rawArsenal.some((item) => typeof item === 'object' && item && 'weaponId' in item)) {
+    return (rawArsenal as OwnedWeapon[]).filter((owned) => owned.weaponId !== 'none');
+  }
+  const result: OwnedWeapon[] = [];
+  const legacyIds = Array.isArray(rawArsenal) ? rawArsenal.filter((id): id is WeaponId => typeof id === 'string' && id !== 'none') : [];
+  const playerWeapon = legacyPlayerWeapon && legacyPlayerWeapon !== 'none' ? legacyPlayerWeapon : legacyIds[legacyIds.length - 1];
+  if (playerWeapon) result.push(createOwnedWeapon(playerWeapon, 'player'));
+  for (const member of gang) {
+    if (member.weapon !== 'none') result.push(createOwnedWeapon(member.weapon, member.id));
+  }
+  for (const weaponId of legacyIds) {
+    if (weaponId !== playerWeapon) result.push(createOwnedWeapon(weaponId));
+  }
+  return result;
+}
+
 export function loadGame(): GameState | null {
   const raw = localStorage.getItem(SAVE_KEY);
   if (!raw) return null;
   try {
     const state = JSON.parse(raw) as Partial<GameState> & { currentWeapon?: WeaponId; hideoutLevel?: number; car?: string };
     const base = newGame();
+    const gang = normalizeGang(state.gang);
+    const arsenal = normalizeArsenal(state.arsenal, gang, state.currentWeapon);
     return {
       ...base,
       ...state,
@@ -990,7 +1068,8 @@ export function loadGame(): GameState | null {
       car: cars.some((car) => car.id === state.car) ? state.car as CarId : 'foot',
       hotelRoom: Boolean(state.hotelRoom),
       gangFounded: Boolean(state.gangFounded),
-      arsenal: state.arsenal?.length ? state.arsenal : ['none', state.currentWeapon ?? 'none'],
+      gang,
+      arsenal,
       monthly: state.monthly ?? {},
       monthlyCrimeCount: state.monthlyCrimeCount ?? 0,
       monthlyMajorCrimeCount: state.monthlyMajorCrimeCount ?? 0,
@@ -1032,13 +1111,13 @@ function spend(state: GameState, cost: number): GameState | null {
 }
 
 export function getEffectiveStats(state: GameState): PlayerStats & { combat: number; intimidation: number; driving: number; planning: number } {
-  const ownedWeapons = state.arsenal.map(getWeapon);
-  const weaponBonuses = ownedWeapons.reduce((sum, weapon) => ({
-    combat: sum.combat + weapon.combatBonus,
-    brutality: sum.brutality + weapon.brutalityBonus,
-    intimidation: sum.intimidation + weapon.intimidationBonus,
-    reputation: sum.reputation + weapon.reputationBonus,
-  }), { combat: 0, brutality: 0, intimidation: 0, reputation: 0 });
+  const playerWeapon = getPlayerWeapon(state);
+  const weaponBonuses = {
+    combat: playerWeapon.combatBonus,
+    brutality: playerWeapon.brutalityBonus,
+    intimidation: playerWeapon.intimidationBonus,
+    reputation: playerWeapon.reputationBonus,
+  };
   const gang = activeGang(state.gang);
   const gangCombat = gang.reduce((sum, member) => sum + member.strength + member.brutality + member.shooting + getWeapon(member.weapon).combatBonus, 0);
   const driving = gang.reduce((sum, member) => sum + member.driving, 0);
@@ -1186,16 +1265,30 @@ export function describeAction(state: GameState, action: ActionConfig): string[]
 
 export function buyWeapon(state: GameState, weaponId: WeaponId): GameState {
   const weapon = getWeapon(weaponId);
-  if (state.arsenal.includes(weaponId)) return withResult(addLog(state, `${weapon.name} liegt bereits im Arsenal.`), 'Nicht möglich', [`${weapon.name} liegt bereits im Arsenal.`]);
+  if (weaponId === 'none') return state;
   const blocked = checkRequirements(state, weapon.requiredStats);
   if (blocked.length) return withResult(addLog(state, blocked[0]), 'Nicht möglich', blocked);
   const paid = spend(state, weapon.price);
   if (!paid) return withResult(addLog(state, `${weapon.name} kostet ${formatMoney(weapon.price)}.`), 'Nicht möglich', [`${weapon.name} kostet ${formatMoney(weapon.price)}.`]);
-  return withResult(addLog({ ...paid, arsenal: [...paid.arsenal, weaponId], monthlyQuietActions: paid.monthlyQuietActions + 1 }, `${weapon.name} gekauft. Deine Chancen bei riskanten Überfällen steigen.`), 'Waffe gekauft', [
-    `${weapon.name} liegt nun im Arsenal.`,
+  return withResult(addLog({ ...paid, arsenal: [...paid.arsenal, createOwnedWeapon(weaponId)], monthlyQuietActions: paid.monthlyQuietActions + 1 }, `${weapon.name} gekauft. Sie liegt frei im Arsenal.`), 'Waffe gekauft', [
+    `${weapon.name} liegt nun frei im Arsenal.`,
     `Reichweite ${weapon.range}, Genauigkeit ${weapon.accuracy}%, Schaden ${weapon.damage}.`,
-    'Diese Waffe verbessert Kämpfe und erhöht im Hintergrund Deine Chancen bei riskanten Überfällen.',
+    'Rüste sie dem Spieler oder einem Gangmitglied zu, damit sie wirkt.',
   ]);
+}
+
+export function sellWeapon(state: GameState, ownedWeaponId: string): GameState {
+  const owned = state.arsenal.find((item) => item.id === ownedWeaponId);
+  if (!owned) return withResult(state, 'Nicht möglich', ['Diese Waffe existiert nicht im Arsenal.']);
+  if (owned.assignedTo) return withResult(state, 'Nicht möglich', ['Ausgerüstete Waffen müssen zuerst abgelegt werden.']);
+  const weapon = getWeapon(owned.weaponId);
+  const value = sellValue(owned.weaponId);
+  return withResult(addLog({
+    ...state,
+    arsenal: state.arsenal.filter((item) => item.id !== ownedWeaponId),
+    stats: { ...state.stats, money: state.stats.money + value },
+    monthlyQuietActions: state.monthlyQuietActions + 1,
+  }, `${weapon.name} verkauft.`), 'Waffe verkauft', [`${weapon.name} verkauft.`, `Erlös: ${formatMoney(value)}.`]);
 }
 
 export function buyCar(state: GameState, carId: CarId): GameState {
@@ -1220,16 +1313,71 @@ export function hireRecruit(state: GameState, templateId: string): GameState {
   if (blocked.length) return withResult(addLog(state, blocked[0]), 'Nicht möglich', blocked);
   const paid = spend(state, template.cost);
   if (!paid) return withResult(addLog(state, `${template.nickname} verlangt ${formatMoney(template.cost)} Handgeld.`), 'Nicht möglich', [`${template.nickname} verlangt ${formatMoney(template.cost)} Handgeld.`]);
-  const recruit: GangMember = { ...template, id: crypto.randomUUID(), status: 'aktiv' };
-  return withResult(addLog({ ...paid, gangFounded: true, monthlyQuietActions: paid.monthlyQuietActions + 1, gang: [...paid.gang, recruit] }, `${template.name} "${template.nickname}" tritt Deiner Bande bei.`), 'Rekrutiert', [`${template.name} "${template.nickname}" ist dabei.`, `Unterhalt: ${formatMoney(template.upkeep)} pro Monat.`, template.special]);
+  const recruit: GangMember = { ...template, id: crypto.randomUUID(), status: 'aktiv', health: 100 };
+  const arsenal = template.weapon === 'none' ? paid.arsenal : [...paid.arsenal, createOwnedWeapon(template.weapon, recruit.id)];
+  return withResult(addLog({ ...paid, gangFounded: true, monthlyQuietActions: paid.monthlyQuietActions + 1, gang: [...paid.gang, recruit], arsenal }, `${template.name} "${template.nickname}" tritt Deiner Bande bei.`), 'Rekrutiert', [`${template.name} "${template.nickname}" ist dabei.`, `Unterhalt: ${formatMoney(template.upkeep)} pro Monat.`, template.weapon === 'none' ? 'Startwaffe: Hände.' : `Startwaffe: ${getWeapon(template.weapon).name}.`, template.special]);
 }
 
-export function equipMember(state: GameState, memberId: string, weapon: WeaponId): GameState {
-  if (!state.arsenal.includes(weapon)) return withResult(addLog(state, 'Diese Waffe liegt nicht im Arsenal.'), 'Nicht möglich', ['Diese Waffe liegt nicht im Arsenal.']);
-  return withResult(addLog({ ...state, monthlyQuietActions: state.monthlyQuietActions + 1, gang: state.gang.map((member) => member.id === memberId ? { ...member, weapon } : member) }, 'Waffe zugeteilt.'), 'Waffe zugeteilt', [`Neue Waffe: ${getWeapon(weapon).name}`]);
+function gangWeaponRequirementMessages(member: GangMember, weapon: WeaponConfig): string[] {
+  return weapon.requiredStats.flatMap((requirement) => {
+    if (!requirement.stat || requirement.min == null) return [];
+    if (!['strength', 'intelligence', 'brutality'].includes(requirement.stat)) return [];
+    const value = member[requirement.stat as 'strength' | 'intelligence' | 'brutality'];
+    return value >= requirement.min ? [] : [`${member.nickname} benötigt ${statLabel(requirement.stat)} ${requirement.min}.`];
+  });
+}
+
+function syncMemberWeapon(member: GangMember, arsenal: OwnedWeapon[]): GangMember {
+  return { ...member, weapon: arsenal.find((owned) => owned.assignedTo === member.id)?.weaponId ?? 'none' };
+}
+
+function gangTrainingLabel(stat: 'strength' | 'intelligence' | 'brutality' | 'shooting' | 'driving'): string {
+  if (stat === 'shooting') return 'Schießen';
+  if (stat === 'driving') return 'Fahren';
+  if (stat === 'intelligence') return 'Planung';
+  return statLabel(stat);
+}
+
+export function equipMember(state: GameState, memberId: string, ownedWeaponId: string): GameState {
+  const member = state.gang.find((item) => item.id === memberId);
+  if (!member) return state;
+  if (ownedWeaponId === 'none') {
+    const arsenal = state.arsenal.map((owned) => owned.assignedTo === memberId ? { ...owned, assignedTo: undefined } : owned);
+    return withResult(addLog({ ...state, arsenal, gang: state.gang.map((item) => item.id === memberId ? syncMemberWeapon(item, arsenal) : item), monthlyQuietActions: state.monthlyQuietActions + 1 }, `${member.nickname} legt die Waffe ab.`), 'Waffe abgelegt', [`${member.nickname} kämpft nun mit Händen.`]);
+  }
+  const owned = state.arsenal.find((item) => item.id === ownedWeaponId);
+  if (!owned) return withResult(addLog(state, 'Diese Waffe liegt nicht im Arsenal.'), 'Nicht möglich', ['Diese Waffe liegt nicht im Arsenal.']);
+  if (owned.assignedTo && owned.assignedTo !== memberId) return withResult(state, 'Nicht möglich', [`${getWeapon(owned.weaponId).name} ist ${assignmentLabel(state, owned)}.`]);
+  const weapon = getWeapon(owned.weaponId);
+  const blocked = gangWeaponRequirementMessages(member, weapon);
+  if (blocked.length) return withResult(state, 'Nicht möglich', blocked);
+  const arsenal = state.arsenal.map((item) => {
+    if (item.assignedTo === memberId) return { ...item, assignedTo: undefined };
+    if (item.id === ownedWeaponId) return { ...item, assignedTo: memberId };
+    return item;
+  });
+  return withResult(addLog({ ...state, arsenal, monthlyQuietActions: state.monthlyQuietActions + 1, gang: state.gang.map((item) => item.id === memberId ? syncMemberWeapon(item, arsenal) : item) }, 'Waffe zugeteilt.'), 'Waffe zugeteilt', [`${member.nickname}: ${weapon.name}.`]);
+}
+
+export function equipPlayer(state: GameState, ownedWeaponId: string): GameState {
+  if (ownedWeaponId === 'none') {
+    return withResult(addLog({ ...state, arsenal: state.arsenal.map((owned) => owned.assignedTo === 'player' ? { ...owned, assignedTo: undefined } : owned), monthlyQuietActions: state.monthlyQuietActions + 1 }, 'Du legst die Waffe ab.'), 'Waffe abgelegt', ['Du kämpfst nun mit Händen.']);
+  }
+  const owned = state.arsenal.find((item) => item.id === ownedWeaponId);
+  if (!owned) return withResult(state, 'Nicht möglich', ['Diese Waffe existiert nicht im Arsenal.']);
+  if (owned.assignedTo && owned.assignedTo !== 'player') return withResult(state, 'Nicht möglich', [`${getWeapon(owned.weaponId).name} ist ${assignmentLabel(state, owned)}.`]);
+  const blocked = checkRequirements(state, getWeapon(owned.weaponId).requiredStats);
+  if (blocked.length) return withResult(state, 'Nicht möglich', blocked);
+  const arsenal = state.arsenal.map((item) => {
+    if (item.assignedTo === 'player') return { ...item, assignedTo: undefined };
+    if (item.id === ownedWeaponId) return { ...item, assignedTo: 'player' };
+    return item;
+  });
+  return withResult(addLog({ ...state, arsenal, monthlyQuietActions: state.monthlyQuietActions + 1 }, `${getWeapon(owned.weaponId).name} beim Spieler ausgerüstet.`), 'Waffe ausgerüstet', [`Spieler: ${getWeapon(owned.weaponId).name}.`]);
 }
 
 export function trainMember(state: GameState, memberId: string, stat: 'strength' | 'intelligence' | 'brutality' | 'shooting' | 'driving'): GameState {
+  if (state.stepsLeft < 2) return withResult(state, 'Nicht möglich', ['Training benötigt 2 Schritte.']);
   const paid = spend(state, 750);
   if (!paid) return withResult(addLog(state, 'Training kostet $750.'), 'Nicht möglich', ['Training kostet $750.']);
   const target = paid.gang.find((member) => member.id === memberId);
@@ -1238,7 +1386,7 @@ export function trainMember(state: GameState, memberId: string, stat: 'strength'
     stepsLeft: clamp(paid.stepsLeft - 2, 0, 99),
     monthlyQuietActions: paid.monthlyQuietActions + 1,
     gang: paid.gang.map((member) => member.id === memberId ? { ...member, [stat]: clamp(member[stat] + 5, 1, 99) } : member),
-  }, `${target?.nickname ?? 'Ein Gangmitglied'} trainiert ${statLabel(stat as Requirement['stat']) || stat}.`), 'Training abgeschlossen', [`${target?.nickname ?? 'Ein Gangmitglied'} verbessert ${stat}.`]);
+  }, `${target?.nickname ?? 'Ein Gangmitglied'} trainiert ${gangTrainingLabel(stat)}.`), 'Training abgeschlossen', [`${target?.nickname ?? 'Ein Gangmitglied'} verbessert ${gangTrainingLabel(stat)}.`]);
 }
 
 export function trainPlayer(state: GameState, stat: 'strength' | 'intelligence' | 'brutality'): GameState {
@@ -1268,14 +1416,19 @@ export function trainPlayer(state: GameState, stat: 'strength' | 'intelligence' 
 
 export function fireMember(state: GameState, memberId: string): GameState {
   const target = state.gang.find((member) => member.id === memberId);
-  return withResult(addLog({ ...state, monthlyQuietActions: state.monthlyQuietActions + 1, gang: state.gang.filter((member) => member.id !== memberId) }, `${target?.nickname ?? 'Ein Gangmitglied'} verlässt die Bande.`), 'Entlassen', [`${target?.nickname ?? 'Ein Gangmitglied'} verlässt die Bande.`]);
+  return withResult(addLog({
+    ...state,
+    monthlyQuietActions: state.monthlyQuietActions + 1,
+    gang: state.gang.filter((member) => member.id !== memberId),
+    arsenal: state.arsenal.map((owned) => owned.assignedTo === memberId ? { ...owned, assignedTo: undefined } : owned),
+  }, `${target?.nickname ?? 'Ein Gangmitglied'} verlässt die Bande.`), 'Entlassen', [`${target?.nickname ?? 'Ein Gangmitglied'} verlässt die Bande.`, 'Zugewiesene Waffen liegen wieder frei im Arsenal.']);
 }
 
 export function healMember(state: GameState, memberId: string): GameState {
   const paid = spend(state, 900);
   if (!paid) return withResult(addLog(state, 'Behandlung kostet $900.'), 'Nicht möglich', ['Behandlung kostet $900.']);
   const target = paid.gang.find((member) => member.id === memberId);
-  return withResult(addLog({ ...paid, monthlyQuietActions: paid.monthlyQuietActions + 1, gang: paid.gang.map((member) => member.id === memberId ? { ...member, status: 'aktiv' } : member) }, `${target?.nickname ?? 'Ein Gangmitglied'} ist wieder einsatzfähig.`), 'Behandlung abgeschlossen', [`${target?.nickname ?? 'Ein Gangmitglied'} ist wieder aktiv.`]);
+  return withResult(addLog({ ...paid, monthlyQuietActions: paid.monthlyQuietActions + 1, gang: paid.gang.map((member) => member.id === memberId ? { ...member, status: 'aktiv', health: 100, loyalty: clamp(member.loyalty + 2, 0, 99) } : member) }, `${target?.nickname ?? 'Ein Gangmitglied'} ist wieder einsatzfähig.`), 'Behandlung abgeschlossen', [`${target?.nickname ?? 'Ein Gangmitglied'} ist wieder aktiv.`, 'Loyalität +2.']);
 }
 
 export interface ActionResult {
@@ -1445,6 +1598,7 @@ export function processMonth(state: GameState): GameState {
   const upkeep = state.gang.filter((member) => member.status !== 'tot').reduce((sum, member) => sum + member.upkeep, 0);
   const informantIncome = activeGang(state.gang).filter((member) => member.role === 'Informant').length * 180;
   const protectionIncome = Object.keys(state.monthly ?? {}).filter((key) => key.startsWith('blackmail')).length * 90;
+  const canPayUpkeep = state.stats.money + informantIncome + protectionIncome >= upkeep;
   const calmMonth = state.monthlyCrimeCount === 0;
   const hardMonth = state.monthlyMajorCrimeCount > 0 || state.monthlyInjured;
   const healthRecovery = hardMonth ? 5 : 10;
@@ -1462,11 +1616,20 @@ export function processMonth(state: GameState): GameState {
     actionCooldowns: Object.fromEntries(Object.entries(state.actionCooldowns ?? {}).filter(([, until]) => until > state.month + 1)),
     stats: {
       ...state.stats,
-      money: state.stats.money - upkeep + informantIncome + protectionIncome,
+      money: Math.max(0, state.stats.money - upkeep + informantIncome + protectionIncome),
       health: clamp(state.stats.health + healthRecovery, 0, 100),
       wanted: clamp(state.stats.wanted - wantedDecay, 0, 10),
     },
-    gang: state.gang.map((member) => member.status === 'verletzt' && Math.random() < 0.35 ? { ...member, status: 'aktiv' } : member),
+    gang: state.gang.map((member) => {
+      const recovered = member.status === 'verletzt' && Math.random() < 0.35;
+      const loyaltyShift = canPayUpkeep ? 1 : -12;
+      return {
+        ...member,
+        status: recovered ? 'aktiv' : member.status,
+        health: recovered ? Math.max(member.health, 70) : member.status === 'verletzt' ? clamp(member.health + 12, 1, 100) : member.health,
+        loyalty: clamp(member.loyalty + loyaltyShift, 0, 99),
+      };
+    }),
   };
   const events: string[] = [
     `Unterhalt: ${formatMoney(upkeep)}.`,
@@ -1479,14 +1642,28 @@ export function processMonth(state: GameState): GameState {
     events.push(`Polizeischutz aktiv bis ${formatGameDate(state.policeProtectionUntilMonth)}.`);
   }
   next = addLog(next, `Monat endet. Unterhalt: ${formatMoney(upkeep)}. Informanten: ${formatMoney(informantIncome)}.`);
-  if (next.stats.money < 0) {
+  if (!canPayUpkeep) {
+    const beforeCount = next.gang.length;
+    const betrayals = next.gang.filter((member) => member.status !== 'tot' && member.loyalty < 18 && Math.random() < 0.35).length;
+    const loyalGang = next.gang.filter((member) => member.status === 'tot' || member.loyalty >= 12 || Math.random() < member.loyalty / 18);
     next = {
       ...next,
-      stats: { ...next.stats, money: 0, reputation: clamp(next.stats.reputation - 2, 0, 99) },
-      gang: next.gang.filter((member) => member.loyalty + Math.random() * 10 > 5),
+      stats: {
+        ...next.stats,
+        money: 0,
+        reputation: clamp(next.stats.reputation - 2, 0, 99),
+        wanted: clamp(next.stats.wanted + betrayals, 0, 10),
+        danger: clamp(next.stats.danger + (betrayals ? 1 : 0), 0, 10),
+      },
+      gang: loyalGang,
+      arsenal: next.arsenal.map((owned) => !owned.assignedTo || owned.assignedTo === 'player' || loyalGang.some((member) => member.id === owned.assignedTo) ? owned : { ...owned, assignedTo: undefined }),
     };
     next = addLog(next, 'Leere Kasse. Niedrige Loyalität wird plötzlich ehrlich.');
-    events.push('Leere Kasse: untreue Leute verschwinden.');
+    events.push('Unterhalt nicht bezahlt: Loyalität -12.');
+    if (beforeCount !== next.gang.length) events.push(`${beforeCount - next.gang.length} untreue Leute verschwinden.`);
+    if (betrayals) events.push('Verrat: Informationen landen bei der Polizei.');
+  } else if (state.gang.length > 0) {
+    events.push('Unterhalt bezahlt: Loyalität +1.');
   }
   const eventRoll = Math.random();
   if (!calmMonth && next.stats.counterfeit > 0 && eventRoll < 0.14) {
@@ -1505,7 +1682,7 @@ export function processMonth(state: GameState): GameState {
   if (next.points >= 120 && next.stats.money >= 50000 && activeGang(next.gang).length >= 5) next = { ...next, screen: 'won', gameOverReason: 'Du bist Der Pate geworden.' };
   const currentRank = getRank(next.points).name;
   const income = informantIncome + protectionIncome;
-  const weapon = getWeapon(next.arsenal[next.arsenal.length - 1] ?? 'none');
+  const weapon = getPlayerWeapon(next);
   return withResult(next, `Steckbrief ${formatGameDate(next.month)}`, [
     '[||||]',
     'Name: Unbekannter aus Chicago',
@@ -1769,11 +1946,31 @@ function isCombatCellBlocked(combat: CombatState, x: number, y: number, ignoreId
 export function makeCombat(state: GameState, kind: 'police' | 'rival', scenarioId: CombatScenarioId = kind): CombatState {
   const scenario = combatScenarios[scenarioId];
   const occupied = new Set<string>();
-  const allies = activeGang(state.gang).slice(0, 5).map((member, index) => {
+  const playerSpawn = findOpenSpawn(scenario.allySpawns, occupied, scenario.terrain);
+  occupied.add(`${playerSpawn.x}-${playerSpawn.y}`);
+  const player: CombatAlly = {
+    id: 'player',
+    name: 'Unbekannter aus Chicago',
+    nickname: 'Du',
+    role: 'Spieler',
+    status: 'aktiv',
+    health: state.stats.health,
+    strength: state.stats.strength,
+    intelligence: state.stats.intelligence,
+    brutality: state.stats.brutality,
+    shooting: Math.round((state.stats.intelligence + state.stats.brutality) / 2),
+    driving: 0,
+    loyalty: 99,
+    weapon: getPlayerWeapon(state).id,
+    isPlayer: true,
+    x: playerSpawn.x,
+    y: playerSpawn.y,
+  };
+  const allies: CombatAlly[] = [player, ...activeGang(state.gang).slice(0, 4).map((member, index) => {
     const spawn = findOpenSpawn(scenario.allySpawns.slice(index), occupied, scenario.terrain);
     occupied.add(`${spawn.x}-${spawn.y}`);
     return { ...member, x: spawn.x, y: spawn.y };
-  });
+  })];
   const enemies = Array.from({ length: kind === 'police' ? 4 : 5 }, (_, index) => {
     const spawn = findOpenSpawn(scenario.enemySpawns.slice(index), occupied, scenario.terrain);
     const label = scenario.enemyLabels[index % scenario.enemyLabels.length];
@@ -1797,7 +1994,7 @@ export function makeCombat(state: GameState, kind: 'police' | 'rival', scenarioI
     allies,
     enemies,
     terrain: scenario.terrain,
-    message: allies.length ? 'Wähle Leute, bewege sie oder greife an.' : 'Ohne aktive Gang ist das Selbstmord.',
+    message: 'Du und Deine Leute sind im Feuer. Bewege eine Einheit oder greife an.',
   };
 }
 
@@ -1843,7 +2040,7 @@ export function combatEnemyTurn(combat: CombatState): CombatState {
     if (distance <= weapon.range) {
       const damage = weapon.damage * 0.35 + enemy.strength;
       if (Math.random() * 100 < clamp(weapon.accuracy - distance * 5, 8, 75)) {
-        allies = allies.map((ally) => ally.id === target.id ? { ...ally, loyalty: ally.loyalty - damage / 10 } : ally);
+        allies = allies.map((ally) => ally.id === target.id ? { ...ally, health: ally.health - damage } : ally);
         messages.push(`${enemy.name} trifft aus Entfernung ${distance}.`);
       } else {
         messages.push(`${enemy.name} verfehlt.`);
@@ -1864,13 +2061,14 @@ export function combatEnemyTurn(combat: CombatState): CombatState {
       messages.push(`${enemy.name} findet keinen freien Weg.`);
     }
   }
-  allies = allies.filter((ally) => ally.loyalty > 0);
-  return { ...combat, allies, enemies, phase: allies.length ? 'player' : 'finished', selectedId: allies[0]?.id, message: allies.length ? messages.slice(0, 2).join(' ') || 'Der Gegner bewegt sich. Du bist dran.' : 'Deine Leute liegen am Boden.' };
+  allies = allies.filter((ally) => ally.health > 0);
+  return { ...combat, allies, enemies, phase: allies.length ? 'player' : 'finished', selectedId: allies[0]?.id, message: allies.length ? messages.slice(0, 2).join(' ') || 'Der Gegner bewegt sich. Du bist dran.' : 'Du und Deine Leute liegen am Boden.' };
 }
 
 export function finishCombat(state: GameState, combat: CombatState): GameState {
   const won = combat.enemies.length === 0 && combat.allies.length > 0;
   const aliveIds = new Set(combat.allies.map((ally) => ally.id));
+  const playerSurvived = aliveIds.has('player');
   const rankPoints = won ? awardRankPoints(state, combat.kind === 'police' ? 2 : 3) : { state: { ...state, points: clamp(state.points - 4, 0, 120) }, gained: 0, capped: false };
   let next: GameState = {
     ...rankPoints.state,
@@ -1878,11 +2076,13 @@ export function finishCombat(state: GameState, combat: CombatState): GameState {
     combat: undefined,
     gang: state.gang.map((member) => {
       if (member.status !== 'aktiv') return member;
-      if (aliveIds.has(member.id)) return member;
-      return { ...member, status: combat.kind === 'police' ? 'verhaftet' : 'verletzt' };
+      const survivor = combat.allies.find((ally) => ally.id === member.id);
+      if (survivor) return { ...member, health: clamp(survivor.health, 1, 100), loyalty: clamp(member.loyalty + (won ? 2 : -2), 0, 99) };
+      return { ...member, status: combat.kind === 'police' ? 'verhaftet' : 'verletzt', health: 25, loyalty: clamp(member.loyalty - 8, 0, 99) };
     }),
     stats: {
       ...rankPoints.state.stats,
+      health: won && playerSurvived ? clamp(combat.allies.find((ally) => ally.id === 'player')?.health ?? state.stats.health, 1, 100) : clamp(state.stats.health - 25, 1, 100),
       money: clamp(state.stats.money + (won ? 2200 : -1200), 0, 999999),
       reputation: clamp(state.stats.reputation + (won ? 6 : -4), 0, 99),
       wanted: clamp(state.stats.wanted + (combat.kind === 'police' ? 2 : 1), 0, 10),
