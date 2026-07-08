@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActionConfig,
   ActionResult,
+  BuildingConfig,
   CarId,
   GameState,
   Requirement,
@@ -438,28 +439,27 @@ function App() {
             <div className="mapPanel">
               <div className="cityGrid" style={{ gridTemplateColumns: `repeat(${MAP_WIDTH}, 1fr)` }}>
                 {game.map.map((tile) => {
-                  const building = tile.entranceFor ? getBuilding(tile.entranceFor) : tile.building ? getBuilding(tile.building) : undefined;
+                  const building = tile.entranceFor ? getBuilding(tile.entranceFor) : tile.buildingVisualFor ? getBuilding(tile.buildingVisualFor) : undefined;
                   const playerHere = tile.x === game.position.x && tile.y === game.position.y;
                   const visual = tileVisuals[tile.kind];
+                  const adjacentReachable = Math.abs(tile.x - game.position.x) + Math.abs(tile.y - game.position.y) === 1 && (tile.kind === 'road' || tile.kind === 'entrance');
                   return (
                     <button
                       key={tile.id}
-                      className={`tile district-${districtClass(tile.district)} kind-${tile.kind} ${tile.building ? 'buildingBlockTile' : ''} ${tile.entranceFor ? 'buildingTile' : ''} ${playerHere ? 'playerTile' : ''}`}
+                      className={`tile district-${districtClass(tile.district)} kind-${tile.kind} ${tile.building ? 'buildingFootprintTile' : ''} ${tile.buildingVisualFor ? 'buildingBlockTile' : ''} ${tile.entranceFor ? 'entranceTile' : ''} ${adjacentReachable ? 'reachableTile' : ''} ${playerHere ? 'playerTile' : ''}`}
                       onClick={() => {
                         const distance = Math.abs(tile.x - game.position.x) + Math.abs(tile.y - game.position.y);
                         if (distance === 1) setGame(movePlayer(game, tile.x - game.position.x, tile.y - game.position.y));
                       }}
                       title={`${building?.name ?? visual.name} / ${tile.district}`}
                     >
-                      <span>{playerHere ? '@' : tile.entranceFor ? '▣' : tile.building ? getBuilding(tile.building).icon : visual.icon}</span>
-                      <small>{tile.building ? getBuilding(tile.building).short : ''}</small>
+                      <span>{playerHere ? '@' : tile.entranceFor ? '▮' : tile.buildingVisualFor ? getBuilding(tile.buildingVisualFor).mapLabel : tile.building ? '▓' : tile.kind === 'road' ? '' : visual.icon}</span>
+                      <small>{tile.entranceFor ? 'TÜR' : ''}</small>
                     </button>
                   );
                 })}
               </div>
-              <div className="legend">
-                {buildings.map((building) => <span key={building.id}><b>{building.icon}</b> {building.name}</span>)}
-              </div>
+              <MapLegend />
               <div className="bottomStatus">
                 <span>Spieler: Anfänger</span>
                 <span>Monat: {formatGameDate(game.month)}</span>
@@ -475,7 +475,7 @@ function App() {
 
             <aside className="panel actionPanel">
               <p className="kicker">{currentTile?.district ?? 'Stadt'}</p>
-              <h2>{currentBuilding?.name ?? tileVisuals[currentTile?.kind ?? 'street'].name}</h2>
+              <h2>{locationTitle(currentTile, game.map)}</h2>
               <p>{currentBuilding?.description ?? 'Gassen, Mauern, Laternen. Nicht jeder Ort ist ein Geschäft, aber jeder Ort erzählt etwas.'}</p>
               <ActionList actions={buildingActions} game={game} askAction={askAction} />
               {currentBuilding?.id === 'weapons' && <WeaponShop game={game} askWeapon={askWeapon} askTrainPlayer={askTrainPlayer} />}
@@ -618,6 +618,35 @@ function enemyTargetLabel(selected: GameState['gang'][number] | undefined, enemy
   const weapon = getWeapon(selected.weapon);
   const distance = Math.abs((selected.x ?? 0) - enemy.x) + Math.abs((selected.y ?? 0) - enemy.y);
   return `${enemy.name} HP ${Math.ceil(enemy.health)} / Entfernung ${distance} / ${distance <= weapon.range ? 'in Reichweite' : 'zu weit'}`;
+}
+
+function locationTitle(tile: GameState['map'][number] | undefined, map: GameState['map']): string {
+  if (!tile) return 'Straße';
+  if (tile.entranceFor) return `Vor ${getBuilding(tile.entranceFor).name}`;
+  const adjacentEntrance = map.find((other) => (
+    other.entranceFor &&
+    Math.abs(other.x - tile.x) + Math.abs(other.y - tile.y) === 1
+  ));
+  if (adjacentEntrance?.entranceFor) return `Vor ${getBuilding(adjacentEntrance.entranceFor).name}`;
+  return tile.kind === 'road'
+    ? `Straße im ${tile.district}`
+    : `${tileVisuals[tile.kind].name} im ${tile.district}`;
+}
+
+function MapLegend() {
+  const groups: Array<BuildingConfig['category']> = ['Unterkunft', 'Geschäfte', 'Risiko', 'Stadt'];
+  return (
+    <div className="legend">
+      {groups.map((group) => (
+        <div className="legendGroup" key={group}>
+          <strong>{group}</strong>
+          {buildings.filter((building) => building.category === group).map((building) => (
+            <span key={building.id}><b>{building.mapLabel}</b> {building.name}</span>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function ActionList({ actions: list, game, askAction }: { actions: ActionConfig[]; game: GameState; askAction: (action: ActionConfig) => void }) {

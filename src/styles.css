@@ -161,10 +161,10 @@ h3 {
 
 .cityGrid {
   display: grid;
-  gap: 0.08rem;
-  border: 4px solid #1b1b35;
-  background: #202040;
-  padding: 0.25rem;
+  gap: 0.06rem;
+  border: 4px solid #111126;
+  background: #111126;
+  padding: 0.3rem;
 }
 
 .tile {
@@ -176,7 +176,7 @@ h3 {
   grid-template-rows: 1fr auto;
   place-items: center;
   border: 0;
-  color: #70a6ff;
+  color: #7892c8;
   overflow: hidden;
 }
 
@@ -184,10 +184,7 @@ h3 {
   content: "";
   position: absolute;
   inset: 0;
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px),
-    linear-gradient(rgba(0, 0, 0, 0.16) 1px, transparent 1px);
-  background-size: 6px 6px;
+  background: linear-gradient(rgba(255, 255, 255, 0.035), transparent 45%, rgba(0, 0, 0, 0.08));
   pointer-events: none;
 }
 
@@ -198,8 +195,8 @@ h3 {
 }
 
 .tile span {
-  color: #f7e26b;
-  font-size: clamp(0.62rem, 1.15vw, 1rem);
+  color: #9db6ff;
+  font-size: clamp(0.55rem, 1vw, 0.86rem);
   line-height: 1;
   text-shadow: 2px 2px 0 #080814;
 }
@@ -259,32 +256,55 @@ h3 {
   background: #363648;
 }
 
-.buildingTile {
-  border: 1px solid #ffd84c;
-  background: #3a3a54;
+.buildingFootprintTile {
+  border: 1px solid #9a5f69;
+  background: #544151;
+  box-shadow: inset 0 0 0 2px rgba(16, 16, 42, 0.5);
+}
+
+.buildingFootprintTile span {
+  color: rgba(255, 216, 76, 0.35);
 }
 
 .buildingBlockTile {
-  border-color: #2a2030;
-  background: #6f4b56;
-  box-shadow: inset 0 0 0 2px rgba(16, 16, 42, 0.42);
+  border-color: #ffd84c;
+  background: #7b5360;
 }
 
 .kind-entrance {
-  background: #3a3a54;
+  background: #303047;
 }
 
-.buildingTile span {
-  color: #ffd84c;
-  font-size: clamp(0.62rem, 1vw, 0.9rem);
+.entranceTile {
+  border: 1px solid #8ee35f;
+  background: #303047;
+}
+
+.entranceTile span {
+  color: #8ee35f;
+  font-size: clamp(0.7rem, 1.15vw, 0.95rem);
+}
+
+.entranceTile small {
+  color: #8ee35f;
+  font-size: 0.36rem;
 }
 
 .buildingBlockTile span {
   color: #ffd84c;
+  font-size: clamp(0.44rem, 0.76vw, 0.72rem);
+  letter-spacing: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.reachableTile {
+  box-shadow: inset 0 0 0 1px rgba(142, 227, 95, 0.55);
 }
 
 .buildingBlockTile small {
-  color: #f3f3ff;
+  display: none;
 }
 
 .playerTile {
@@ -305,16 +325,59 @@ h3 {
 }
 
 .kind-road {
-  background: #242437;
+  background: #161827;
+  box-shadow: inset 0 0 0 1px rgba(112, 166, 255, 0.13);
+}
+
+.kind-road span {
+  color: rgba(143, 143, 255, 0.42);
+}
+
+.kind-street,
+.kind-alley,
+.kind-block,
+.kind-warehouse,
+.kind-yard,
+.kind-lamp {
+  opacity: 0.55;
+}
+
+.kind-street span,
+.kind-alley span,
+.kind-block span,
+.kind-warehouse span,
+.kind-yard span,
+.kind-lamp span {
+  color: transparent;
+  text-shadow: none;
 }
 
 .legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem 0.8rem;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.45rem;
   margin-top: 0.75rem;
   color: #f3f3ff;
-  font-size: 0.78rem;
+  font-size: 0.68rem;
+}
+
+.legendGroup {
+  display: grid;
+  gap: 0.2rem;
+  border: 1px solid #314f43;
+  padding: 0.35rem;
+  background: #11112b;
+}
+
+.legendGroup strong {
+  color: #8ee35f;
+  font-size: 0.7rem;
+}
+
+.legendGroup span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bottomStatus {

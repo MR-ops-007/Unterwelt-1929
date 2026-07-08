@@ -26,7 +26,7 @@ export type District =
   | 'Bahnhofsviertel'
   | 'Polizeibezirk';
 
-export type TileKind = 'road' | 'entrance' | 'street' | 'alley' | 'park' | 'warehouse' | 'lamp' | 'wall' | 'yard' | 'block';
+export type TileKind = 'road' | 'sidewalk' | 'entrance' | 'building' | 'decor' | 'street' | 'alley' | 'park' | 'warehouse' | 'lamp' | 'wall' | 'yard' | 'block';
 export type MemberStatus = 'aktiv' | 'verletzt' | 'verhaftet' | 'tot';
 export type Role = 'Schlaeger' | 'Fahrerin' | 'Planer' | 'Safeknacker' | 'Schuetzin' | 'Informant' | 'Verhandler';
 export type WeaponId = 'none' | 'colt1911' | 'savage1907' | 'remington11' | 'winchester97' | 'sw10' | 'thompson' | 'browningBar' | 'grenades';
@@ -158,6 +158,8 @@ export interface BuildingConfig {
   name: string;
   icon: string;
   short: string;
+  mapLabel: string;
+  category: 'Unterkunft' | 'Geschäfte' | 'Risiko' | 'Stadt';
   description: string;
   district: District;
   actions: ActionId[];
@@ -191,6 +193,7 @@ export interface Tile {
   district: District;
   kind: TileKind;
   building?: BuildingType;
+  buildingVisualFor?: BuildingType;
   entranceFor?: BuildingType;
 }
 
@@ -630,23 +633,23 @@ export const recruitTemplates: GangMemberTemplate[] = [
 ];
 
 export const buildings: BuildingConfig[] = [
-  { id: 'hideout', name: 'Versteck', icon: 'V', short: 'V', description: 'Kalter Ofen, falsche Papiere, ein Bett pro Freund.', district: 'Altstadt', actions: ['lay-low', 'found-gang'] },
-  { id: 'kneipe', name: 'Kneipe', icon: 'K', short: 'K', description: 'Rauch, Korn und Menschen, die neue Chefs suchen.', district: 'Rotlichtgasse', actions: ['blackmail'] },
-  { id: 'hotel', name: 'Hotel', icon: 'H', short: 'H', description: 'Teure Zimmer, diskrete Türen, bessere Kontakte.', district: 'Villenviertel', actions: ['rent-room', 'found-gang'] },
-  { id: 'weapons', name: 'Waffenhändler', icon: '†', short: 'WA', description: 'Der Keller riecht nach Öl und schlechten Entscheidungen.', district: 'Industriegebiet', actions: [] },
-  { id: 'cars', name: 'Autohändler', icon: 'A', short: 'A', description: 'Frisierte Motoren und Rechnungen ohne Namen.', district: 'Bahnhofsviertel', actions: ['steal-car'] },
-  { id: 'counterfeit', name: 'Blüten-Ede', icon: 'E', short: 'E', description: 'Blüten-Ede sitzt im Hinterzimmer einer verrauchten Druckerei. Seine Scheine riechen fast echt.', district: 'Altstadt', actions: ['cheap-counterfeit', 'clean-counterfeit', 'master-counterfeit', 'fake-passport', 'counterfeit-contacts'] },
-  { id: 'bank', name: 'Bank', icon: 'B', short: 'B', description: 'Marmor, Stahl und Wachmänner mit nervösen Händen.', district: 'Altstadt', actions: ['bank-robbery', 'safe-crack'] },
-  { id: 'casino', name: 'Casino', icon: 'C', short: 'C', description: 'Glücksspiel, Schuldscheine und Samtvorhänge.', district: 'Rotlichtgasse', actions: ['casino-roulette', 'casino-crooked-cards', 'casino-roulette-brake', 'casino-high-table', 'casino-extort'] },
-  { id: 'police', name: 'Polizeirevier', icon: 'P', short: 'PR', description: 'Aktenordner, Zellen, Namen an Tafeln.', district: 'Polizeibezirk', actions: ['police-chief-bribe', 'police-bribe', 'gang-war'] },
-  { id: 'hospital', name: 'Krankenhaus', icon: '+', short: '+', description: 'Saubere Laken für dreckiges Geld.', district: 'Polizeibezirk', actions: ['heal-player'] },
-  { id: 'harbor', name: 'Hafenlager', icon: '▓', short: 'HL', description: 'Kisten, Nebel, Wachhunde und verschwundene Fracht.', district: 'Hafenviertel', actions: ['harbor-heist'] },
-  { id: 'station', name: 'Bahnhof', icon: 'Z', short: 'Z', description: 'Koffer, Fahrpläne und niemand schaut zweimal hin.', district: 'Bahnhofsviertel', actions: ['station-job', 'train-robbery'] },
-  { id: 'villa', name: 'Villa', icon: '♛', short: 'VI', description: 'Reiche Leute schlafen schlecht, wenn Du davon weißt.', district: 'Villenviertel', actions: ['villa-burglary'] },
-  { id: 'pawnshop', name: 'Pfandleihe', icon: '¤', short: 'PF', description: 'Hier bekommt jedes Problem einen Preis.', district: 'Industriegebiet', actions: ['small-theft', 'pawn-sale'] },
-  { id: 'subway', name: 'U-Bahn', icon: 'U', short: 'U', description: 'Gedränge am Bahnsteig. Kleine Hände, kleine Scheine.', district: 'Bahnhofsviertel', actions: ['subway-pickpocket'] },
-  { id: 'loanshark', name: 'Kredit-Hai', icon: 'L', short: 'L', description: 'Geld heute, Schmerzen morgen.', district: 'Rotlichtgasse', actions: ['loan-take', 'loan-repay'] },
-  { id: 'shop', name: 'Laden', icon: 'S', short: 'S', description: 'Kasse, Besitzer, Schaufenster. Ein Anfang.', district: 'Altstadt', actions: ['beg', 'shop-robbery', 'blackmail'] },
+  { id: 'hideout', name: 'Versteck', icon: 'V', short: 'V', mapLabel: 'VERST', category: 'Unterkunft', description: 'Kalter Ofen, falsche Papiere, ein Bett pro Freund.', district: 'Altstadt', actions: ['lay-low', 'found-gang'] },
+  { id: 'kneipe', name: 'Kneipe', icon: 'K', short: 'K', mapLabel: 'KNEIPE', category: 'Unterkunft', description: 'Rauch, Korn und Menschen, die neue Chefs suchen.', district: 'Rotlichtgasse', actions: ['blackmail'] },
+  { id: 'hotel', name: 'Hotel', icon: 'H', short: 'H', mapLabel: 'HOTEL', category: 'Unterkunft', description: 'Teure Zimmer, diskrete Türen, bessere Kontakte.', district: 'Villenviertel', actions: ['rent-room', 'found-gang'] },
+  { id: 'weapons', name: 'Waffenhändler', icon: '†', short: 'WA', mapLabel: 'WAFF', category: 'Geschäfte', description: 'Der Keller riecht nach Öl und schlechten Entscheidungen.', district: 'Industriegebiet', actions: [] },
+  { id: 'cars', name: 'Autohändler', icon: 'A', short: 'A', mapLabel: 'AUTO', category: 'Geschäfte', description: 'Frisierte Motoren und Rechnungen ohne Namen.', district: 'Bahnhofsviertel', actions: ['steal-car'] },
+  { id: 'counterfeit', name: 'Blüten-Ede', icon: 'E', short: 'E', mapLabel: 'EDE', category: 'Geschäfte', description: 'Blüten-Ede sitzt im Hinterzimmer einer verrauchten Druckerei. Seine Scheine riechen fast echt.', district: 'Altstadt', actions: ['cheap-counterfeit', 'clean-counterfeit', 'master-counterfeit', 'fake-passport', 'counterfeit-contacts'] },
+  { id: 'bank', name: 'Bank', icon: 'B', short: 'B', mapLabel: 'BANK', category: 'Risiko', description: 'Marmor, Stahl und Wachmänner mit nervösen Händen.', district: 'Altstadt', actions: ['bank-robbery', 'safe-crack'] },
+  { id: 'casino', name: 'Casino', icon: 'C', short: 'C', mapLabel: 'CAS', category: 'Risiko', description: 'Glücksspiel, Schuldscheine und Samtvorhänge.', district: 'Rotlichtgasse', actions: ['casino-roulette', 'casino-crooked-cards', 'casino-roulette-brake', 'casino-high-table', 'casino-extort'] },
+  { id: 'police', name: 'Polizeirevier', icon: 'P', short: 'PR', mapLabel: 'POL', category: 'Stadt', description: 'Aktenordner, Zellen, Namen an Tafeln.', district: 'Polizeibezirk', actions: ['police-chief-bribe', 'police-bribe', 'gang-war'] },
+  { id: 'hospital', name: 'Krankenhaus', icon: '+', short: '+', mapLabel: 'KH', category: 'Stadt', description: 'Saubere Laken für dreckiges Geld.', district: 'Polizeibezirk', actions: ['heal-player'] },
+  { id: 'harbor', name: 'Hafenlager', icon: '▓', short: 'HL', mapLabel: 'HAFEN', category: 'Risiko', description: 'Kisten, Nebel, Wachhunde und verschwundene Fracht.', district: 'Hafenviertel', actions: ['harbor-heist'] },
+  { id: 'station', name: 'Bahnhof', icon: 'Z', short: 'Z', mapLabel: 'BHF', category: 'Stadt', description: 'Koffer, Fahrpläne und niemand schaut zweimal hin.', district: 'Bahnhofsviertel', actions: ['station-job', 'train-robbery'] },
+  { id: 'villa', name: 'Villa', icon: '♛', short: 'VI', mapLabel: 'VILLA', category: 'Risiko', description: 'Reiche Leute schlafen schlecht, wenn Du davon weißt.', district: 'Villenviertel', actions: ['villa-burglary'] },
+  { id: 'pawnshop', name: 'Pfandleihe', icon: '¤', short: 'PF', mapLabel: 'PFAND', category: 'Geschäfte', description: 'Hier bekommt jedes Problem einen Preis.', district: 'Industriegebiet', actions: ['small-theft', 'pawn-sale'] },
+  { id: 'subway', name: 'U-Bahn', icon: 'U', short: 'U', mapLabel: 'U', category: 'Stadt', description: 'Gedränge am Bahnsteig. Kleine Hände, kleine Scheine.', district: 'Bahnhofsviertel', actions: ['subway-pickpocket'] },
+  { id: 'loanshark', name: 'Kredit-Hai', icon: 'L', short: 'L', mapLabel: 'KREDIT', category: 'Geschäfte', description: 'Geld heute, Schmerzen morgen.', district: 'Rotlichtgasse', actions: ['loan-take', 'loan-repay'] },
+  { id: 'shop', name: 'Laden', icon: 'S', short: 'S', mapLabel: 'SHOP', category: 'Geschäfte', description: 'Kasse, Besitzer, Schaufenster. Ein Anfang.', district: 'Altstadt', actions: ['beg', 'shop-robbery', 'blackmail'] },
 ];
 
 export const actions: ActionConfig[] = [
@@ -687,7 +690,10 @@ export const actions: ActionConfig[] = [
 
 export const tileVisuals: Record<TileKind, { icon: string; name: string }> = {
   road: { icon: ' ', name: 'Straße' },
-  entrance: { icon: '▣', name: 'Eingang' },
+  sidewalk: { icon: '·', name: 'Gehweg' },
+  entrance: { icon: '▮', name: 'Eingang' },
+  building: { icon: '█', name: 'Gebäude' },
+  decor: { icon: '░', name: 'Block' },
   street: { icon: '·', name: 'Straße' },
   alley: { icon: '░', name: 'Gasse' },
   park: { icon: '♠', name: 'Park' },
@@ -757,18 +763,20 @@ export function createMap(): Tile[] {
     for (let x = 0; x < MAP_WIDTH; x += 1) {
       const district = districtFor(x, y);
       const entrance = buildingPositions.find(([bx, by]) => bx === x && by === y);
-      const building = buildingPositions.find(([bx, by]) => {
+      const buildingVisual = buildingPositions.find(([bx, by]) => {
         const tile = buildingTileFor(bx, by);
         return tile.x === x && tile.y === y;
       });
+      const buildingFootprint = buildingVisual ?? buildingFootprintForTile(x, y);
       tiles.push({
         id: `${x}-${y}`,
         x,
         y,
         district,
-        kind: entrance ? 'entrance' : building ? 'block' : kindFor(x, y, district),
+        kind: entrance ? 'entrance' : buildingFootprint ? 'building' : kindFor(x, y, district),
         entranceFor: entrance?.[2],
-        building: building?.[2],
+        building: buildingFootprint?.[2],
+        buildingVisualFor: buildingVisual?.[2],
       });
     }
   }
@@ -777,10 +785,14 @@ export function createMap(): Tile[] {
 
 function buildingTileFor(x: number, y: number): { x: number; y: number } {
   const candidates = [
-    { x: x + 1, y: y + 1 },
-    { x: x - 1, y: y + 1 },
-    { x: x + 1, y: y - 1 },
-    { x: x - 1, y: y - 1 },
+    { x: x + 1, y },
+    { x: x - 1, y },
+    { x, y: y + 1 },
+    { x, y: y - 1 },
+    { x: x + 2, y },
+    { x: x - 2, y },
+    { x, y: y + 2 },
+    { x, y: y - 2 },
   ];
   return candidates.find((candidate) => (
     candidate.x >= 0 &&
@@ -788,7 +800,16 @@ function buildingTileFor(x: number, y: number): { x: number; y: number } {
     candidate.y >= 0 &&
     candidate.y < MAP_HEIGHT &&
     !isRoad(candidate.x, candidate.y)
-  )) ?? { x, y };
+  )) ?? { x: clamp(x + 1, 0, MAP_WIDTH - 1), y: clamp(y + 1, 0, MAP_HEIGHT - 1) };
+}
+
+function buildingFootprintForTile(x: number, y: number): [number, number, BuildingType] | undefined {
+  if (isRoad(x, y)) return undefined;
+  return buildingPositions.find(([bx, by]) => {
+    const visual = buildingTileFor(bx, by);
+    const distance = Math.abs(visual.x - x) + Math.abs(visual.y - y);
+    return distance === 1 && !buildingPositions.some(([ex, ey]) => ex === x && ey === y);
+  });
 }
 
 export function validateMapConnectivity(map: Tile[] = createMap(), start = { x: 1, y: 1 }): { valid: boolean; unreachable: Tile[] } {
