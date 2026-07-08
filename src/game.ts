@@ -251,6 +251,8 @@ export interface GameState {
   monthlyMajorCrimeCount: number;
   monthlyQuietActions: number;
   monthlyInjured: boolean;
+  monthlyPointGain: number;
+  actionCooldowns: Record<string, number>;
   policeCheckCooldownUntilMonth?: number;
   policeProtectionUntilMonth?: number;
   log: LogEntry[];
@@ -267,6 +269,7 @@ export const MAP_HEIGHT = 24;
 export const MAP_SIZE = MAP_WIDTH;
 export const COMBAT_WIDTH = 12;
 export const COMBAT_HEIGHT = 8;
+export const MONTHLY_POINT_CAP = 6;
 
 export const ranks: Array<{ name: RankName; points: number }> = [
   { name: 'Anfänger', points: 0 },
@@ -547,7 +550,7 @@ export const recruitTemplates: GangMemberTemplate[] = [
     upkeep: 450,
     weapon: 'savage1907',
     special: 'Reduziert Fehlschlagrisiko bei komplexen Coups.',
-    weakness: 'Geringe Loyalität, wenn Dein Ruf schwach ist.',
+    weakness: 'Geringe Loyalität, wenn Dein Straßenruf schwach ist.',
     requirements: [{ rank: 'Ganove' }, { hotelRoom: true }],
   },
   {
@@ -654,38 +657,38 @@ export const buildings: BuildingConfig[] = [
 
 export const actions: ActionConfig[] = [
   { id: 'beg', name: 'Betteln', building: 'shop', cost: 0, reward: [10, 80], risk: 'niedrig', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'beg', effect: 'Ein würdeloser, aber sicherer Anfang.', failure: 'Niemand gibt Dir etwas.' },
-  { id: 'shop-robbery', name: 'Laden ausrauben', building: 'shop', cost: 0, reward: [120, 420], risk: 'hoch', policeRisk: 2, reputationEffect: 1, requirements: [], rank: 'Anfänger', stepCost: 2, pointEffect: 2, cooldownKey: 'shop-robbery', effect: 'Riskanter Kassenraub. Einmal pro Laden und Monat.', failure: 'Der Ladenbesitzer ruft die Polizei.' },
-  { id: 'small-theft', name: 'Kleinen Bruch drehen', building: 'pawnshop', cost: 0, reward: [120, 420], risk: 'niedrig', policeRisk: 1, reputationEffect: 1, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 2, cooldownKey: 'small-theft', effect: 'Schnelles Geld für den Anfang.', failure: 'Du verlierst Gesundheit oder bekommst Fahndungsdruck.' },
+  { id: 'shop-robbery', name: 'Laden ausrauben', building: 'shop', cost: 0, reward: [120, 420], risk: 'hoch', policeRisk: 2, reputationEffect: 1, requirements: [], rank: 'Anfänger', stepCost: 2, pointEffect: 1, cooldownKey: 'shop-robbery', effect: 'Riskanter Kassenraub. Einmal pro Laden und Monat.', failure: 'Der Ladenbesitzer ruft die Polizei.' },
+  { id: 'small-theft', name: 'Kleinen Bruch drehen', building: 'pawnshop', cost: 0, reward: [120, 420], risk: 'niedrig', policeRisk: 1, reputationEffect: 1, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 1, cooldownKey: 'small-theft', effect: 'Schnelles Geld für den Anfang.', failure: 'Du verlierst Gesundheit oder bekommst Fahndungsdruck.' },
   { id: 'pawn-sale', name: 'Beute versetzen', building: 'pawnshop', cost: 0, reward: [80, 260], risk: 'niedrig', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'pawn-sale', effect: 'Kleiner sicherer Erlös.', failure: 'Der Pfandleiher drückt den Preis.' },
-  { id: 'subway-pickpocket', name: 'Taschendiebstahl am Bahnsteig', building: 'subway', cost: 0, reward: [90, 350], risk: 'niedrig', policeRisk: 1, reputationEffect: 1, requirements: [], rank: 'Kleiner Fisch', stepCost: 1, pointEffect: 2, cooldownKey: 'subway', effect: 'Viele Taschen, wenig Licht.', failure: 'Ein Schaffner schaut zu genau hin.' },
-  { id: 'blackmail', name: 'Schutzgeld eintreiben', building: 'kneipe', cost: 0, reward: [320, 900], risk: 'mittel', policeRisk: 1, reputationEffect: 2, requirements: [], rank: 'Langfinger', stepCost: 2, pointEffect: 3, cooldownKey: 'blackmail', recommendedRoles: ['Schlaeger', 'Verhandler'], gangSlots: 1, effect: 'Brutalität und Verhandlungsgeschick zählen.', failure: 'Das Opfer rennt zur Polizei.' },
+  { id: 'subway-pickpocket', name: 'Taschendiebstahl am Bahnsteig', building: 'subway', cost: 0, reward: [90, 350], risk: 'niedrig', policeRisk: 1, reputationEffect: 1, requirements: [], rank: 'Kleiner Fisch', stepCost: 1, pointEffect: 1, cooldownKey: 'subway', effect: 'Viele Taschen, wenig Licht.', failure: 'Ein Schaffner schaut zu genau hin.' },
+  { id: 'blackmail', name: 'Schutzgeld eintreiben', building: 'kneipe', cost: 0, reward: [320, 900], risk: 'mittel', policeRisk: 1, reputationEffect: 2, requirements: [], rank: 'Langfinger', stepCost: 2, pointEffect: 2, cooldownKey: 'blackmail', recommendedRoles: ['Schlaeger', 'Verhandler'], gangSlots: 1, effect: 'Brutalität und Verhandlungsgeschick zählen.', failure: 'Das Opfer rennt zur Polizei.' },
   { id: 'rent-room', name: 'Hotelzimmer mieten', building: 'hotel', cost: 900, risk: 'niedrig', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'rent-room', effect: 'Ein Zimmer als Basis. Ab jetzt kannst Du einfache Leute anwerben.', failure: 'Der Portier will echtes Geld.' },
   { id: 'found-gang', name: 'Bande organisieren', building: 'hideout', cost: 0, risk: 'niedrig', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'found-gang', effect: 'Du ordnest Kontakte, Betten und Regeln. Kein teurer Gründungsritus.', failure: 'Niemand hört richtig zu.' },
-  { id: 'bank-robbery', name: 'Bank überfallen', building: 'bank', cost: 250, reward: [5000, 25000], risk: 'sehr hoch', policeRisk: 3, reputationEffect: 5, requirements: [{ rank: 'Mafiosi' }, { activeGang: 1 }], rank: 'Mafiosi', stepCost: 3, pointEffect: 8, cooldownKey: 'bank-robbery', recommendedRoles: ['Safeknacker', 'Planer', 'Fahrerin'], gangSlots: 3, danger: 2, effect: 'Große Beute, großer Ruhm, große Akte.', failure: 'Verletzung, Verhaftung oder Geldverlust möglich.' },
-  { id: 'safe-crack', name: 'Tresor knacken', building: 'bank', cost: 400, reward: [3000, 13000], risk: 'hoch', policeRisk: 2, reputationEffect: 3, requirements: [{ rank: 'Mafiosi' }, { stat: 'intelligence', min: 45 }, { activeGang: 1 }], rank: 'Mafiosi', stepCost: 3, pointEffect: 6, cooldownKey: 'safe-crack', recommendedRoles: ['Safeknacker', 'Planer'], effect: 'Leiser als ein Banküberfall, aber nicht weniger schwer.', failure: 'Der Tresor schweigt, die Sirene nicht.' },
+  { id: 'bank-robbery', name: 'Bank überfallen', building: 'bank', cost: 250, reward: [5000, 25000], risk: 'sehr hoch', policeRisk: 3, reputationEffect: 5, requirements: [{ rank: 'Mafiosi' }, { activeGang: 1 }], rank: 'Mafiosi', stepCost: 3, pointEffect: 4, cooldownKey: 'bank-robbery', recommendedRoles: ['Safeknacker', 'Planer', 'Fahrerin'], gangSlots: 3, danger: 2, effect: 'Große Beute, großer Ruhm, große Akte.', failure: 'Verletzung, Verhaftung oder Geldverlust möglich.' },
+  { id: 'safe-crack', name: 'Tresor knacken', building: 'bank', cost: 400, reward: [3000, 13000], risk: 'hoch', policeRisk: 2, reputationEffect: 3, requirements: [{ rank: 'Mafiosi' }, { stat: 'intelligence', min: 45 }, { activeGang: 1 }], rank: 'Mafiosi', stepCost: 3, pointEffect: 3, cooldownKey: 'safe-crack', recommendedRoles: ['Safeknacker', 'Planer'], effect: 'Leiser als ein Banküberfall, aber nicht weniger schwer.', failure: 'Der Tresor schweigt, die Sirene nicht.' },
   { id: 'casino-gamble', name: 'Im Casino spielen', building: 'casino', cost: 300, reward: [0, 1200], risk: 'mittel', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'casino-gamble', effect: 'Alte Option: wird durch die Tische ersetzt.', failure: 'Das Haus gewinnt.' },
   { id: 'casino-roulette', name: 'Roulette spielen', building: 'casino', cost: 120, reward: [0, 420], risk: 'niedrig', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'casino-roulette', effect: 'Kleine Einsätze. Kein Ruhm, keine Akte.', failure: 'Die Kugel fällt gegen Dich.' },
-  { id: 'casino-crooked-cards', name: 'Gezinkte Karten', building: 'casino', cost: 250, reward: [300, 1500], risk: 'mittel', policeRisk: 0, reputationEffect: 0, requirements: [{ stat: 'intelligence', min: 35 }], rank: 'Anfänger', stepCost: 1, pointEffect: 1, cooldownKey: 'casino-crooked-cards', recommendedRoles: ['Informant', 'Planer'], effect: 'Intelligenz, Informanten und Planer helfen beim Betrug.', failure: 'Der Croupier erkennt die falsche Bewegung.' },
-  { id: 'casino-roulette-brake', name: 'Roulette-Bremse', building: 'casino', cost: 450, reward: [900, 2800], risk: 'hoch', policeRisk: 1, reputationEffect: 1, requirements: [{ stat: 'intelligence', min: 55 }], rank: 'Langfinger', stepCost: 2, pointEffect: 2, cooldownKey: 'casino-roulette-brake', recommendedRoles: ['Planer', 'Informant'], effect: 'Manipuliertes Spiel. Clever, aber sehr auffällig.', failure: 'Ein Saaldiener sieht zu genau hin.' },
-  { id: 'casino-high-table', name: 'Hoher Tisch', building: 'casino', cost: 1200, reward: [0, 5200], risk: 'hoch', policeRisk: 0, reputationEffect: 1, requirements: [{ rank: 'Ganove' }], rank: 'Ganove', stepCost: 2, pointEffect: 1, cooldownKey: 'casino-high-table', recommendedRoles: ['Verhandler'], effect: 'Große Einsätze, große Schwankungen, kein Verbrechen.', failure: 'Das Haus lächelt und nimmt alles.' },
-  { id: 'casino-extort', name: 'Casino erpressen', building: 'casino', cost: 0, reward: [800, 2400], risk: 'hoch', policeRisk: 2, reputationEffect: 3, requirements: [{ rank: 'Ganove' }, { activeGang: 1 }], rank: 'Ganove', stepCost: 2, pointEffect: 5, cooldownKey: 'casino-extort', recommendedRoles: ['Verhandler', 'Schlaeger'], gangSlots: 2, danger: 1, effect: 'Viel Bargeld, viele Zeugen.', failure: 'Die Türsteher kennen auch Gewalt.' },
+  { id: 'casino-crooked-cards', name: 'Gezinkte Karten', building: 'casino', cost: 250, reward: [300, 1500], risk: 'mittel', policeRisk: 0, reputationEffect: 1, requirements: [{ stat: 'intelligence', min: 35 }], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'casino-crooked-cards', recommendedRoles: ['Informant', 'Planer'], effect: 'Intelligenz, Informanten und Planer helfen beim Betrug.', failure: 'Der Croupier erkennt die falsche Bewegung.' },
+  { id: 'casino-roulette-brake', name: 'Roulette-Bremse', building: 'casino', cost: 450, reward: [900, 2800], risk: 'hoch', policeRisk: 1, reputationEffect: 2, requirements: [{ stat: 'intelligence', min: 55 }], rank: 'Langfinger', stepCost: 2, pointEffect: 1, cooldownKey: 'casino-roulette-brake', recommendedRoles: ['Planer', 'Informant'], effect: 'Manipuliertes Spiel. Clever, aber sehr auffällig.', failure: 'Ein Saaldiener sieht zu genau hin.' },
+  { id: 'casino-high-table', name: 'Hoher Tisch', building: 'casino', cost: 1200, reward: [0, 5200], risk: 'hoch', policeRisk: 0, reputationEffect: 1, requirements: [{ rank: 'Ganove' }], rank: 'Ganove', stepCost: 2, pointEffect: 0, cooldownKey: 'casino-high-table', recommendedRoles: ['Verhandler'], effect: 'Große Einsätze, große Schwankungen, kein Verbrechen.', failure: 'Das Haus lächelt und nimmt alles.' },
+  { id: 'casino-extort', name: 'Casino erpressen', building: 'casino', cost: 0, reward: [800, 2400], risk: 'hoch', policeRisk: 2, reputationEffect: 3, requirements: [{ rank: 'Ganove' }, { activeGang: 1 }], rank: 'Ganove', stepCost: 2, pointEffect: 3, cooldownKey: 'casino-extort', recommendedRoles: ['Verhandler', 'Schlaeger'], gangSlots: 2, danger: 1, effect: 'Viel Bargeld, viele Zeugen.', failure: 'Die Türsteher kennen auch Gewalt.' },
   { id: 'lay-low', name: 'Untertauchen', building: 'hideout', cost: 200, risk: 'niedrig', policeRisk: -2, reputationEffect: -1, requirements: [], rank: 'Anfänger', stepCost: 2, pointEffect: 0, cooldownKey: 'lay-low', effect: 'Fahndung sinkt um 2, Gefahr sinkt leicht.', failure: 'Die Stadt vergisst Dich nicht völlig.' },
   { id: 'heal-player', name: 'Behandeln lassen', building: 'hospital', cost: 500, risk: 'niedrig', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'heal-player', effect: 'Gesundheit wird vollständig wiederhergestellt.', failure: 'Ohne Geld keine Medizin.' },
-  { id: 'harbor-heist', name: 'Hafenlager ausräumen', building: 'harbor', cost: 150, reward: [1800, 6200], risk: 'hoch', policeRisk: 2, reputationEffect: 3, requirements: [{ rank: 'Ganove' }, { activeGang: 2 }], rank: 'Ganove', stepCost: 2, pointEffect: 5, cooldownKey: 'harbor-heist', recommendedRoles: ['Fahrerin', 'Schlaeger'], gangSlots: 3, danger: 1, effect: 'Lieferwagen geben Bonus.', failure: 'Wachleute und Hafenpolizei machen Ärger.' },
-  { id: 'station-job', name: 'Koffer am Bahnhof abfangen', building: 'station', cost: 80, reward: [700, 2100], risk: 'mittel', policeRisk: 1, reputationEffect: 1, requirements: [{ rank: 'Kleiner Fisch' }], rank: 'Kleiner Fisch', stepCost: 1, pointEffect: 3, cooldownKey: 'station-job', recommendedRoles: ['Informant', 'Fahrerin'], gangSlots: 1, effect: 'Schneller Coup mit guter Fluchtchance.', failure: 'Der falsche Koffer, der richtige Polizist.' },
-  { id: 'train-robbery', name: 'Postzug ausnehmen', building: 'station', cost: 500, reward: [4500, 17000], risk: 'sehr hoch', policeRisk: 3, reputationEffect: 5, requirements: [{ rank: 'Bullenschreck' }, { activeGang: 2 }], rank: 'Bullenschreck', stepCost: 3, pointEffect: 8, cooldownKey: 'train-robbery', recommendedRoles: ['Fahrerin', 'Planer'], effect: 'Später Coup mit großem Echo.', failure: 'Der Zug fährt, Du bleibst.' },
-  { id: 'villa-burglary', name: 'Villa ausräumen', building: 'villa', cost: 200, reward: [2200, 9000], risk: 'hoch', policeRisk: 2, reputationEffect: 3, requirements: [{ rank: 'Langfinger' }, { stat: 'intelligence', min: 45 }, { activeGang: 1 }], rank: 'Langfinger', stepCost: 2, pointEffect: 5, cooldownKey: 'villa-burglary', recommendedRoles: ['Safeknacker', 'Planer'], gangSlots: 2, danger: 1, effect: 'Intelligenz und Safeknacker glänzen.', failure: 'Alarmanlagen sind die Sprache der Reichen.' },
+  { id: 'harbor-heist', name: 'Hafenlager ausräumen', building: 'harbor', cost: 150, reward: [1800, 6200], risk: 'hoch', policeRisk: 2, reputationEffect: 3, requirements: [{ rank: 'Ganove' }, { activeGang: 2 }], rank: 'Ganove', stepCost: 2, pointEffect: 3, cooldownKey: 'harbor-heist', recommendedRoles: ['Fahrerin', 'Schlaeger'], gangSlots: 3, danger: 1, effect: 'Lieferwagen geben Bonus.', failure: 'Wachleute und Hafenpolizei machen Ärger.' },
+  { id: 'station-job', name: 'Koffer am Bahnhof abfangen', building: 'station', cost: 80, reward: [700, 2100], risk: 'mittel', policeRisk: 1, reputationEffect: 1, requirements: [{ rank: 'Kleiner Fisch' }], rank: 'Kleiner Fisch', stepCost: 1, pointEffect: 1, cooldownKey: 'station-job', recommendedRoles: ['Informant', 'Fahrerin'], gangSlots: 1, effect: 'Schneller Coup mit guter Fluchtchance.', failure: 'Der falsche Koffer, der richtige Polizist.' },
+  { id: 'train-robbery', name: 'Postzug ausnehmen', building: 'station', cost: 500, reward: [4500, 17000], risk: 'sehr hoch', policeRisk: 3, reputationEffect: 5, requirements: [{ rank: 'Bullenschreck' }, { activeGang: 2 }], rank: 'Bullenschreck', stepCost: 3, pointEffect: 5, cooldownKey: 'train-robbery', recommendedRoles: ['Fahrerin', 'Planer'], effect: 'Später Coup mit großem Echo.', failure: 'Der Zug fährt, Du bleibst.' },
+  { id: 'villa-burglary', name: 'Villa ausräumen', building: 'villa', cost: 200, reward: [2200, 9000], risk: 'hoch', policeRisk: 2, reputationEffect: 3, requirements: [{ rank: 'Langfinger' }, { stat: 'intelligence', min: 45 }, { activeGang: 1 }], rank: 'Langfinger', stepCost: 2, pointEffect: 3, cooldownKey: 'villa-burglary', recommendedRoles: ['Safeknacker', 'Planer'], gangSlots: 2, danger: 1, effect: 'Intelligenz und Safeknacker glänzen.', failure: 'Alarmanlagen sind die Sprache der Reichen.' },
   { id: 'police-chief-bribe', name: 'Polizeichef bestechen', building: 'police', cost: 0, risk: 'mittel', policeRisk: -2, reputationEffect: 0, requirements: [{ rank: 'Kleiner Fisch' }], rank: 'Kleiner Fisch', stepCost: 1, pointEffect: 0, cooldownKey: 'police-chief-bribe', recommendedRoles: ['Verhandler'], effect: 'Kauft zeitweise Ruhe auf der Straße. Der Preis richtet sich nach Rang und Fahndung.', failure: 'Der Umschlag kommt beim falschen Schreibtisch an.' },
   { id: 'police-bribe', name: 'Akten schmieren', building: 'police', cost: 1800, risk: 'mittel', policeRisk: -2, reputationEffect: 0, requirements: [{ rank: 'Langfinger' }, { stat: 'intelligence', min: 35 }], rank: 'Langfinger', stepCost: 1, pointEffect: 0, cooldownKey: 'police-bribe', recommendedRoles: ['Verhandler'], effect: 'Fahndung sinkt, wenn die Umschläge dick genug sind.', failure: 'Ein ehrlicher Beamter ist teuer.' },
-  { id: 'gang-war', name: 'Bandenkrieg anzetteln', building: 'police', cost: 0, risk: 'sehr hoch', policeRisk: 2, reputationEffect: 5, requirements: [{ rank: 'Bullenschreck' }, { activeGang: 2 }], rank: 'Bullenschreck', stepCost: 2, pointEffect: 6, cooldownKey: 'gang-war', recommendedRoles: ['Schuetzin', 'Schlaeger'], danger: 2, effect: 'Startet einen taktischen Kampf.', failure: 'Die Straße frisst Schwäche.' },
+  { id: 'gang-war', name: 'Bandenkrieg anzetteln', building: 'police', cost: 0, risk: 'sehr hoch', policeRisk: 2, reputationEffect: 5, requirements: [{ rank: 'Bullenschreck' }, { activeGang: 2 }], rank: 'Bullenschreck', stepCost: 2, pointEffect: 4, cooldownKey: 'gang-war', recommendedRoles: ['Schuetzin', 'Schlaeger'], danger: 2, effect: 'Startet einen taktischen Kampf.', failure: 'Die Straße frisst Schwäche.' },
   { id: 'cheap-counterfeit', name: 'Kleine Blüte kaufen', building: 'counterfeit', cost: 500, reward: [1000, 1000], risk: 'hoch', policeRisk: 2, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'cheap-counterfeit', effect: 'Gibt $1.000 Bargeld, erhöht aber das Blütenrisiko.', failure: 'Der Schein riecht zu frisch.' },
   { id: 'clean-counterfeit', name: 'Saubere Blüte kaufen', building: 'counterfeit', cost: 2000, reward: [3500, 3500], risk: 'mittel', policeRisk: 1, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'clean-counterfeit', effect: 'Gibt $3.500 Bargeld, mittlere Entdeckungsgefahr.', failure: 'Ein Händler merkt sich Dein Gesicht.' },
   { id: 'master-counterfeit', name: 'Meisterdruck kaufen', building: 'counterfeit', cost: 7500, reward: [12000, 12000], risk: 'niedrig', policeRisk: 1, reputationEffect: 0, requirements: [{ rank: 'Mafiosi' }], rank: 'Mafiosi', stepCost: 1, pointEffect: 0, cooldownKey: 'master-counterfeit', effect: 'Gibt $12.000 Bargeld, niedrige Entdeckungsgefahr.', failure: 'Perfekt ist nie kostenlos.' },
   { id: 'fake-passport', name: 'Neuen Pass besorgen', building: 'counterfeit', cost: 5000, risk: 'mittel', policeRisk: -2, reputationEffect: 0, requirements: [{ stat: 'intelligence', min: 35 }], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'fake-passport', effect: 'Fahndung sinkt um 2, Polizeikontrollen werden harmloser.', failure: 'Ein falscher Name hilft nicht bei echten Fehlern.' },
-  { id: 'counterfeit-contacts', name: 'Kontakte kaufen', building: 'counterfeit', cost: 2500, risk: 'mittel', policeRisk: 0, reputationEffect: 2, requirements: [{ rank: 'Langfinger' }], rank: 'Langfinger', stepCost: 1, pointEffect: 2, cooldownKey: 'counterfeit-contacts', effect: 'Ruf +2, bessere Geschäfte mit Ede.', failure: 'Kontakte reden erst, wenn Geld redet.' },
+  { id: 'counterfeit-contacts', name: 'Kontakte kaufen', building: 'counterfeit', cost: 2500, risk: 'mittel', policeRisk: 0, reputationEffect: 2, requirements: [{ rank: 'Langfinger' }], rank: 'Langfinger', stepCost: 1, pointEffect: 0, cooldownKey: 'counterfeit-contacts', effect: 'Straßenruf +2, bessere Geschäfte mit Ede.', failure: 'Kontakte reden erst, wenn Geld redet.' },
   { id: 'loan-take', name: 'Kredit aufnehmen', building: 'loanshark', cost: 0, reward: [1500, 1500], risk: 'mittel', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'loan-take', effect: 'Schnelles Geld, später Schmerzen.', failure: 'Der Hai hält Dich für zu klein.' },
-  { id: 'loan-repay', name: 'Kredit zurückzahlen', building: 'loanshark', cost: 2000, risk: 'niedrig', policeRisk: 0, reputationEffect: 1, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 1, cooldownKey: 'loan-repay', effect: 'Ruf steigt, Schulden verschwinden im Rauch.', failure: 'Ohne Geld bleibt der Hai hungrig.' },
-  { id: 'steal-car', name: 'Auto stehlen', building: 'cars', cost: 0, risk: 'hoch', policeRisk: 2, reputationEffect: 1, requirements: [{ rank: 'Langfinger' }], rank: 'Langfinger', stepCost: 2, pointEffect: 4, cooldownKey: 'steal-car', effect: 'Chance auf einen besseren Wagen ohne Kaufpreis.', failure: 'Ein Wachmann merkt sich Deine Schuhe.' },
+  { id: 'loan-repay', name: 'Kredit zurückzahlen', building: 'loanshark', cost: 2000, risk: 'niedrig', policeRisk: 0, reputationEffect: 1, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'loan-repay', effect: 'Straßenruf steigt, Schulden verschwinden im Rauch.', failure: 'Ohne Geld bleibt der Hai hungrig.' },
+  { id: 'steal-car', name: 'Auto stehlen', building: 'cars', cost: 0, risk: 'hoch', policeRisk: 2, reputationEffect: 1, requirements: [{ rank: 'Langfinger' }], rank: 'Langfinger', stepCost: 2, pointEffect: 2, cooldownKey: 'steal-car', effect: 'Chance auf einen besseren Wagen ohne Kaufpreis.', failure: 'Ein Wachmann merkt sich Deine Schuhe.' },
 ];
 
 export const tileVisuals: Record<TileKind, { icon: string; name: string }> = {
@@ -894,6 +897,10 @@ export function actionAvailability(state: GameState, action: ActionConfig): stri
     else if (action.id === 'shop-robbery') messages.push('Dieser Laden wurde diesen Monat schon ausgeraubt.');
     else messages.push('Diese Gelegenheit ist diesen Monat erschöpft.');
   }
+  const cooldownUntil = state.actionCooldowns?.[key];
+  if (cooldownUntil != null && cooldownUntil > state.month) {
+    messages.push(`Ziel ist bis ${formatGameDate(cooldownUntil)} zu heiß.`);
+  }
   return [...new Set(messages)];
 }
 
@@ -915,7 +922,7 @@ export function statLabel(stat: Requirement['stat']): string {
     health: 'Gesundheit',
     strength: 'Stärke',
     intelligence: 'Intelligenz',
-    reputation: 'Ruf',
+    reputation: 'Straßenruf',
     brutality: 'Brutalität',
     wanted: 'Fahndung',
     danger: 'Gefahr',
@@ -960,6 +967,8 @@ export function newGame(startingStats: Pick<PlayerStats, 'strength' | 'intellige
     monthlyMajorCrimeCount: 0,
     monthlyQuietActions: 0,
     monthlyInjured: false,
+    monthlyPointGain: 0,
+    actionCooldowns: {},
     policeCheckCooldownUntilMonth: 0,
     policeProtectionUntilMonth: 0,
     map: createMap(),
@@ -987,6 +996,8 @@ export function loadGame(): GameState | null {
       monthlyMajorCrimeCount: state.monthlyMajorCrimeCount ?? 0,
       monthlyQuietActions: state.monthlyQuietActions ?? 0,
       monthlyInjured: state.monthlyInjured ?? false,
+      monthlyPointGain: state.monthlyPointGain ?? 0,
+      actionCooldowns: state.actionCooldowns ?? {},
       policeCheckCooldownUntilMonth: state.policeCheckCooldownUntilMonth ?? 0,
       policeProtectionUntilMonth: state.policeProtectionUntilMonth ?? 0,
       map: createMap(),
@@ -1100,6 +1111,39 @@ function markMonthlyActivity(state: GameState, action: ActionConfig, injured = f
   };
 }
 
+function awardRankPoints(state: GameState, requested: number): { state: GameState; gained: number; capped: boolean } {
+  const available = Math.max(0, MONTHLY_POINT_CAP - state.monthlyPointGain);
+  const gained = clamp(requested, 0, available);
+  return {
+    state: {
+      ...state,
+      points: clamp(state.points + gained, 0, 120),
+      monthlyPointGain: state.monthlyPointGain + gained,
+    },
+    gained,
+    capped: requested > gained,
+  };
+}
+
+function actionCooldownMonths(action: ActionConfig): number {
+  if (action.id === 'bank-robbery' || action.id === 'safe-crack') return 3;
+  if (action.id === 'train-robbery') return 6;
+  if (action.id === 'villa-burglary') return 3;
+  return 0;
+}
+
+function withActionCooldown(state: GameState, action: ActionConfig): GameState {
+  const months = actionCooldownMonths(action);
+  if (!months) return state;
+  return {
+    ...state,
+    actionCooldowns: {
+      ...state.actionCooldowns,
+      [monthlyKey(state, action)]: state.month + months,
+    },
+  };
+}
+
 function successfulWantedIncrease(action: ActionConfig, policeShift: number): number {
   if (['beg', 'pawn-sale', 'casino-gamble', 'casino-roulette', 'casino-high-table', 'loan-take', 'loan-repay', 'rent-room', 'found-gang', 'heal-player', 'counterfeit-contacts', 'police-chief-bribe'].includes(action.id)) return 0;
   if (['small-theft', 'subway-pickpocket', 'station-job'].includes(action.id)) return 0;
@@ -1122,14 +1166,16 @@ function failedDamage(action: ActionConfig): number {
 export function describeAction(state: GameState, action: ActionConfig): string[] {
   const req = actionAvailability(state, action);
   const cost = actionCost(state, action);
+  const capLeft = Math.max(0, MONTHLY_POINT_CAP - state.monthlyPointGain);
   return [
     cost ? `Kosten: ${formatMoney(cost)}` : 'Kosten: keine',
     `Schrittkosten: ${action.stepCost ?? 1}`,
     action.reward ? `Mögliche Beute: ${formatMoney(action.reward[0])}-${formatMoney(action.reward[1])}` : action.effect,
     `Risiko: ${action.risk}`,
     `Polizeirisiko: ${action.policeRisk >= 0 ? '+' : ''}${action.policeRisk}`,
-    `Ruf bei Erfolg: ${action.reputationEffect >= 0 ? '+' : ''}${action.reputationEffect}`,
-    `Punkte bei Erfolg: +${action.pointEffect ?? 0}`,
+    `Straßenruf bei Erfolg: ${action.reputationEffect >= 0 ? '+' : ''}${action.reputationEffect}`,
+    `Rangpunkte bei Erfolg: +${Math.min(action.pointEffect ?? 0, capLeft)}${(action.pointEffect ?? 0) > capLeft ? ' (Monatslimit)' : ''}`,
+    capLeft === 0 && (action.pointEffect ?? 0) > 0 ? 'Mehr Ruhm holst Du diesen Monat nicht aus der Straße.' : `Rangpunkte diesen Monat: ${state.monthlyPointGain}/${MONTHLY_POINT_CAP}`,
     `Benötigter Rang: ${action.rank ?? 'Anfänger'}`,
     action.gangSlots ? `Gang beteiligt: bis zu ${action.gangSlots}` : 'Gang beteiligt: optional',
     action.recommendedRoles?.length ? `Empfohlen: ${action.recommendedRoles.join(', ')}` : 'Empfohlen: keine Spezialrolle',
@@ -1256,6 +1302,7 @@ export function resolveAction(state: GameState, actionId: ActionId): ActionResul
   const success = Math.random() < chance;
   const car = getCar(next.car);
   const policeShift = clamp(action.policeRisk + car.policeRiskModifier, -3, 4);
+  next = withActionCooldown(next, action);
 
   if (action.id === 'rent-room') {
     next = markMonthlyActivity({ ...next, hotelRoom: true, gangFounded: true }, action);
@@ -1319,22 +1366,24 @@ export function resolveAction(state: GameState, actionId: ActionId): ActionResul
 
   if (action.id === 'steal-car') {
     const wonCar = success ? (Math.random() < 0.55 ? 'talbot90' : 'chevyRoadster') as CarId : undefined;
+    const points = success ? awardRankPoints(next, action.pointEffect ?? 0) : undefined;
+    next = points?.state ?? next;
     next = {
       ...next,
       car: wonCar ?? next.car,
-      points: next.points + (success ? action.pointEffect ?? 0 : 0),
       stats: { ...next.stats, wanted: clamp(next.stats.wanted + (success ? 1 : 2), 0, 10), reputation: clamp(next.stats.reputation + (success ? 1 : 0), 0, 99) },
     };
     next = markMonthlyActivity(next, action, !success);
-    return { state: withResult(addLog(next, success && wonCar ? `${getCar(wonCar).name} gestohlen.` : 'Autodiebstahl scheitert.'), success ? 'Auto gestohlen' : 'Fehlschlag', success && wonCar ? [`${getCar(wonCar).name} ist jetzt aktiv.`, `Punkte +${action.pointEffect ?? 0}.`] : ['Ein Wachmann schlägt Alarm.', 'Fahndung steigt.']) };
+    return { state: withResult(addLog(next, success && wonCar ? `${getCar(wonCar).name} gestohlen.` : 'Autodiebstahl scheitert.'), success ? 'Auto gestohlen' : 'Fehlschlag', success && wonCar ? [`${getCar(wonCar).name} ist jetzt aktiv.`, `Rangpunkte +${points?.gained ?? 0}.`, points?.capped ? 'Mehr Ruhm holst Du diesen Monat nicht aus der Straße.' : `Monatslimit: ${next.monthlyPointGain}/${MONTHLY_POINT_CAP}.`] : ['Ein Wachmann schlägt Alarm.', 'Fahndung steigt.']) };
   }
 
   if (success) {
     const reward = action.reward ? action.reward[0] + Math.floor(Math.random() * (action.reward[1] - action.reward[0] + 1)) : 0;
     const wantedIncrease = successfulWantedIncrease(action, policeShift);
+    const points = awardRankPoints(next, action.pointEffect ?? 0);
+    next = points.state;
     next = {
       ...next,
-      points: clamp(next.points + (action.pointEffect ?? 0), 0, 120),
       stats: {
         ...next.stats,
         money: next.stats.money + reward,
@@ -1344,7 +1393,7 @@ export function resolveAction(state: GameState, actionId: ActionId): ActionResul
       },
     };
     next = markMonthlyActivity(next, action);
-    next = withResult(addLog(next, `${action.name} gelingt. Beute: ${formatMoney(reward)}.`), 'Erfolg', [`${action.name} gelingt.`, `Beute: ${formatMoney(reward)}.`, `Punkte +${action.pointEffect ?? 0}.`, `Ruf ${action.reputationEffect >= 0 ? '+' : ''}${action.reputationEffect}.`, wantedIncrease ? `Fahndung +${wantedIncrease}.` : 'Keine zusätzliche Fahndung.']);
+    next = withResult(addLog(next, `${action.name} gelingt. Beute: ${formatMoney(reward)}.`), 'Erfolg', [`${action.name} gelingt.`, `Beute: ${formatMoney(reward)}.`, `Rangpunkte +${points.gained}.`, points.capped ? 'Mehr Ruhm holst Du diesen Monat nicht aus der Straße.' : `Monatslimit: ${next.monthlyPointGain}/${MONTHLY_POINT_CAP}.`, `Straßenruf ${action.reputationEffect >= 0 ? '+' : ''}${action.reputationEffect}.`, wantedIncrease ? `Fahndung +${wantedIncrease}.` : 'Keine zusätzliche Fahndung.']);
   } else {
     const damage = failedDamage(action);
     const wantedIncrease = failedWantedIncrease(action);
@@ -1392,6 +1441,7 @@ function failedActionCombatScenario(action: ActionConfig): CombatScenarioId | un
 
 export function processMonth(state: GameState): GameState {
   const previousRank = getRank(state.points).name;
+  const previousMonthlyPointGain = state.monthlyPointGain;
   const upkeep = state.gang.filter((member) => member.status !== 'tot').reduce((sum, member) => sum + member.upkeep, 0);
   const informantIncome = activeGang(state.gang).filter((member) => member.role === 'Informant').length * 180;
   const protectionIncome = Object.keys(state.monthly ?? {}).filter((key) => key.startsWith('blackmail')).length * 90;
@@ -1408,6 +1458,8 @@ export function processMonth(state: GameState): GameState {
     monthlyMajorCrimeCount: 0,
     monthlyQuietActions: 0,
     monthlyInjured: false,
+    monthlyPointGain: 0,
+    actionCooldowns: Object.fromEntries(Object.entries(state.actionCooldowns ?? {}).filter(([, until]) => until > state.month + 1)),
     stats: {
       ...state.stats,
       money: state.stats.money - upkeep + informantIncome + protectionIncome,
@@ -1445,7 +1497,7 @@ export function processMonth(state: GameState): GameState {
     events.push('Rivalen markieren Dein Viertel: Gefahr +1.');
   } else if (eventRoll < 0.38) {
     next = addLog({ ...next, stats: { ...next.stats, reputation: clamp(next.stats.reputation + 1, 0, 99) } }, 'Dein Name fällt in mehr Hinterzimmern.');
-    events.push('Gerüchte: Ruf +1.');
+    events.push('Gerüchte: Straßenruf +1.');
   }
 
   if (next.month >= 36) next = { ...next, screen: 'lost', gameOverReason: '01/1928 ist erreicht. Die Stadt hat einen anderen Boss gefunden.' };
@@ -1458,7 +1510,8 @@ export function processMonth(state: GameState): GameState {
     '[||||]',
     'Name: Unbekannter aus Chicago',
     `Rang: ${currentRank}${currentRank !== previousRank ? ` (Aufstieg von ${previousRank})` : ''}`,
-    `Punkte: ${next.points}`,
+    `Rangpunkte: ${next.points}`,
+    `Monatsruhm: ${previousMonthlyPointGain}/${MONTHLY_POINT_CAP}`,
     `Geld: ${formatMoney(next.stats.money)}`,
     `Fahndung: ${next.stats.wanted}`,
     `Gesundheit: ${next.stats.health}`,
@@ -1571,7 +1624,7 @@ export function resolvePoliceCheck(state: GameState, option: 'flee' | 'bribe' | 
     'Du kommst aus dem Polizeirevier. Für diesen Monat hältst Du besser den Kopf unten.',
     `Du verlierst ${jailMonths} Monat(e).`,
     `Geldverlust: ${formatMoney(moneyLoss)}.`,
-    'Punkte sinken leicht.',
+    'Rangpunkte sinken leicht.',
     'Fahndung kühlt etwas ab.',
   ]);
 }
@@ -1818,8 +1871,9 @@ export function combatEnemyTurn(combat: CombatState): CombatState {
 export function finishCombat(state: GameState, combat: CombatState): GameState {
   const won = combat.enemies.length === 0 && combat.allies.length > 0;
   const aliveIds = new Set(combat.allies.map((ally) => ally.id));
+  const rankPoints = won ? awardRankPoints(state, combat.kind === 'police' ? 2 : 3) : { state: { ...state, points: clamp(state.points - 4, 0, 120) }, gained: 0, capped: false };
   let next: GameState = {
-    ...state,
+    ...rankPoints.state,
     screen: 'game',
     combat: undefined,
     gang: state.gang.map((member) => {
@@ -1828,16 +1882,15 @@ export function finishCombat(state: GameState, combat: CombatState): GameState {
       return { ...member, status: combat.kind === 'police' ? 'verhaftet' : 'verletzt' };
     }),
     stats: {
-      ...state.stats,
+      ...rankPoints.state.stats,
       money: clamp(state.stats.money + (won ? 2200 : -1200), 0, 999999),
       reputation: clamp(state.stats.reputation + (won ? 6 : -4), 0, 99),
       wanted: clamp(state.stats.wanted + (combat.kind === 'police' ? 2 : 1), 0, 10),
       danger: clamp(state.stats.danger + (won ? 2 : 0), 0, 10),
     },
-    points: clamp(state.points + (won ? 6 : -4), 0, 120),
   };
-  next = addLog(next, won ? 'Du gewinnst den Kampf. Die Straße merkt sich die Lektion.' : 'Niederlage. Geld, Ruf und Leute gehen verloren.');
+  next = addLog(next, won ? 'Du gewinnst den Kampf. Die Straße merkt sich die Lektion.' : 'Niederlage. Geld, Straßenruf und Leute gehen verloren.');
   return withResult(next, won ? 'Kampf gewonnen' : 'Kampf verloren', won
-    ? ['Die Bande gewinnt.', 'Punkte +6.', 'Ruf steigt, Gefahr steigt.']
-    : ['Niederlage ist nicht das Ende.', 'Geld und Punkte verloren.', combat.kind === 'police' ? 'Einige Leute können verhaftet werden.' : 'Einige Leute sind verletzt.']);
+    ? ['Die Bande gewinnt.', `Rangpunkte +${rankPoints.gained}.`, rankPoints.capped ? 'Mehr Ruhm holst Du diesen Monat nicht aus der Straße.' : `Monatslimit: ${next.monthlyPointGain}/${MONTHLY_POINT_CAP}.`, 'Straßenruf steigt, Gefahr steigt.']
+    : ['Niederlage ist nicht das Ende.', 'Geld und Rangpunkte verloren.', combat.kind === 'police' ? 'Einige Leute können verhaftet werden.' : 'Einige Leute sind verletzt.']);
 }

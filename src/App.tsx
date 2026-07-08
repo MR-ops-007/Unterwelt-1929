@@ -51,6 +51,7 @@ import {
   trainPlayer,
   weapons,
   MAP_WIDTH,
+  MONTHLY_POINT_CAP,
   SAVE_KEY,
 } from './game';
 
@@ -173,7 +174,7 @@ function App() {
       lines: [
         `Preis: ${formatMoney(car.price)}`,
         `Bewegung danach: ${car.movementPoints} Schritte pro Monat`,
-        `Anforderung: Ruf ${car.reputationRequirement}${car.requiredStats.length ? ', weitere Werte' : ''}`,
+        `Anforderung: Straßenruf ${car.reputationRequirement}${car.requiredStats.length ? ', weitere Werte' : ''}`,
         `Polizeirisiko: ${car.policeRiskModifier}`,
         `Effekt: ${car.specialEffect}`,
         car.description,
@@ -345,7 +346,7 @@ function App() {
         <section className="titleBlock">
           <p className="kicker">{game.screen === 'won' ? 'SIEG' : 'ENDE'}</p>
           <h1>{game.screen === 'won' ? 'BOSS DER UNTERWELT' : 'DIE STADT HAT GEWONNEN'}</h1>
-          <p>{game.gameOverReason ?? (game.screen === 'won' ? 'Geld, Ruf und Bande reichen. Die Stadt gehört Dir.' : 'Ein klarer Grund fehlt. Das sollte nicht passieren.')}</p>
+          <p>{game.gameOverReason ?? (game.screen === 'won' ? 'Geld, Straßenruf und Bande reichen. Die Stadt gehört Dir.' : 'Ein klarer Grund fehlt. Das sollte nicht passieren.')}</p>
         </section>
         <button onClick={startNew}>Neu beginnen</button>
       </main>
@@ -413,7 +414,7 @@ function App() {
       <header className="topbar">
         <div>
           <strong>Unterwelt 1929</strong>
-          <span> {formatGameDate(game.month)} / {rank.name} / Punkte {game.points} / Bewegung {game.stepsLeft}/{getCar(game.car).movementPoints}</span>
+          <span> {formatGameDate(game.month)} / {rank.name} / Rangpunkte {game.points} / Bewegung {game.stepsLeft}/{getCar(game.car).movementPoints}</span>
         </div>
         <div className="topActions">
           <button onClick={() => setGame((prev) => ({ ...prev, screen: prev.screen === 'gang' ? 'game' : 'gang' }))}>{game.screen === 'gang' ? 'Karte' : 'Bande'}</button>
@@ -486,19 +487,21 @@ function App() {
 
             <aside className="panel statsPanel">
               <h2>Status</h2>
+              <p className="statHelp">Rangpunkte bestimmen Deinen Rang. Straßenruf beeinflusst Respekt, Preise und Erfolgschancen.</p>
               <dl>
                 <dt>Geld</dt><dd>{formatMoney(game.stats.money)}</dd>
                 <dt>Monat</dt><dd>{formatGameDate(game.month)}</dd>
                 <dt>Rang</dt><dd>{rank.name}</dd>
-                <dt>Punkte</dt><dd>{game.points}{rank.next ? ` / ${rank.next.points}` : ''}</dd>
+                <dt>Rangpunkte</dt><dd title="Rangpunkte bestimmen Deinen langfristigen Rang.">{game.points}{rank.next ? ` / ${rank.next.points}` : ''}</dd>
+                <dt>Monatsruhm</dt><dd>{game.monthlyPointGain}/{MONTHLY_POINT_CAP}</dd>
                 <dt>Blütenrisiko</dt><dd>{game.stats.counterfeit}/10</dd>
                 <dt>Gesundheit</dt><dd>{game.stats.health}</dd>
                 <dt>Stärke</dt><dd>{game.stats.strength}</dd>
                 <dt>Intelligenz</dt><dd>{game.stats.intelligence}</dd>
-                <dt>Ruf</dt><dd>{game.stats.reputation} ({effective.reputation} effektiv)</dd>
+                <dt>Straßenruf</dt><dd title="Straßenruf beeinflusst Respekt, Preise und Erfolgschancen.">{game.stats.reputation} ({effective.reputation} effektiv)</dd>
                 <dt>Brutalität</dt><dd>{game.stats.brutality} ({effective.brutality} effektiv)</dd>
                 <dt>Kampfwert</dt><dd title="Stärke + Brutalität + Waffen + Bande">{Math.round(effective.combat)}</dd>
-                <dt>Einschüchterung</dt><dd title="Brutalität + Ruf + passende Bande/Waffe">{Math.round(effective.intimidation)}</dd>
+                <dt>Einschüchterung</dt><dd title="Brutalität + Straßenruf + passende Bande/Waffe">{Math.round(effective.intimidation)}</dd>
                 <dt>Fahndung</dt><dd>{game.stats.wanted}</dd>
                 <dt>Gefahr</dt><dd>{game.stats.danger}</dd>
                 <dt>Pass</dt><dd>{game.stats.passport ? 'Ja' : 'Nein'}</dd>
@@ -664,7 +667,7 @@ function ActionList({ actions: list, game, askAction }: { actions: ActionConfig[
               <li>{cost ? `Kosten ${formatMoney(cost)}` : 'Keine Kosten'}, Schritte {action.stepCost ?? 1}</li>
               <li>{action.reward ? `Beute ${formatMoney(action.reward[0])}-${formatMoney(action.reward[1])}` : `Effekt: ${action.effect}`}</li>
               <li>Risiko {action.risk}, Polizei {action.policeRisk >= 0 ? '+' : ''}{action.policeRisk}</li>
-              <li>Rang {action.rank ?? 'Anfänger'}, Punkte +{action.pointEffect ?? 0}</li>
+              <li>Rang {action.rank ?? 'Anfänger'}, Rangpunkte +{Math.min(action.pointEffect ?? 0, Math.max(0, MONTHLY_POINT_CAP - game.monthlyPointGain))}</li>
               <li>{blocked.length ? blocked[0] : 'Anforderungen erfüllt'}</li>
             </ul>
             <button disabled={blocked.length > 0} onClick={() => askAction(action)}>{blocked.length ? blocked[0] : 'Auswählen'}</button>

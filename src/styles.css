@@ -458,6 +458,13 @@ h3 {
   margin: 0;
 }
 
+.statHelp {
+  margin: 0 0 0.75rem;
+  color: #8fe3a4;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
 .statsPanel dt {
   color: #70a6ff;
 }
