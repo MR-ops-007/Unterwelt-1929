@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActionConfig,
   ActionResult,
@@ -23,6 +23,8 @@ import {
   combatMove,
   COMBAT_HEIGHT,
   COMBAT_WIDTH,
+  DEFAULT_GANG_NAMES,
+  DEFAULT_PLAYER_NAME,
   describeAction,
   equipMember,
   equipPlayer,
@@ -74,12 +76,54 @@ const statShort: Array<[string, string]> = [
   ['loyalty', 'LO'],
 ];
 
+type SoundName = 'menu' | 'move' | 'success' | 'failure' | 'cash' | 'gunshot' | 'miss' | 'police' | 'month';
+const SOUND_KEY = 'unterwelt-1929-sound';
+let audioContext: AudioContext | null = null;
+
+function playRetroSound(name: SoundName, enabled: boolean): void {
+  if (!enabled) return;
+  audioContext ??= new AudioContext();
+  if (audioContext.state === 'suspended') void audioContext.resume();
+  const now = audioContext.currentTime;
+  const osc = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+  const wave: OscillatorType = name === 'gunshot' || name === 'failure' ? 'square' : 'triangle';
+  const tones: Record<SoundName, [number, number, number]> = {
+    menu: [440, 660, 0.06],
+    move: [180, 120, 0.035],
+    success: [520, 880, 0.12],
+    failure: [220, 110, 0.16],
+    cash: [740, 980, 0.1],
+    gunshot: [120, 55, 0.08],
+    miss: [330, 180, 0.08],
+    police: [660, 440, 0.22],
+    month: [330, 660, 0.18],
+  };
+  const [start, end, length] = tones[name];
+  osc.type = wave;
+  osc.frequency.setValueAtTime(start, now);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(1, end), now + length);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(name === 'gunshot' ? 0.18 : 0.08, now + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + length);
+  osc.connect(gain);
+  gain.connect(audioContext.destination);
+  osc.start(now);
+  osc.stop(now + length + 0.02);
+}
+
 function App() {
   const [game, setGame] = useState<GameState>(() => loadGame() ?? { ...newGame(), screen: 'menu' });
   const [pending, setPending] = useState<Pending | null>(null);
   const [storyId, setStoryId] = useState<string | null>(null);
   const [startingStats, setStartingStats] = useState(() => rollStartingStats());
+  const [playerName, setPlayerName] = useState(DEFAULT_PLAYER_NAME);
+  const [gangName, setGangName] = useState(() => DEFAULT_GANG_NAMES[Math.floor(Math.random() * DEFAULT_GANG_NAMES.length)]);
   const [recruitSearch, setRecruitSearch] = useState<string | null>(null);
+  const [recruitSearchStarted, setRecruitSearchStarted] = useState(0);
+  const recruitTemplateRef = useRef<string | null>(null);
+  const recruitTimerRef = useRef<number | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem(SOUND_KEY) === 'on');
   const [hasSave, setHasSave] = useState(() => Boolean(localStorage.getItem(SAVE_KEY)));
   const currentTile = useMemo(
     () => game.map.find((tile) => tile.x === game.position.x && tile.y === game.position.y),
@@ -96,11 +140,20 @@ function App() {
         return;
       }
 
+      if (recruitSearch) {
+        if ((event.code === 'Space' || event.code === 'Enter') && Date.now() - recruitSearchStarted > 1000) {
+          event.preventDefault();
+          finishRecruitSearch();
+        }
+        return;
+      }
+
       if (game.screen === 'combat' && game.combat?.selectedId) {
         const selectedId = game.combat.selectedId;
         const delta = keyDelta(event.code);
         if (delta) {
           event.preventDefault();
+          playRetroSound('move', soundEnabled);
           setGame((prev) => prev.combat ? { ...prev, combat: combatMove(prev.combat, selectedId, delta[0], delta[1]) } : prev);
         }
         return;
@@ -110,6 +163,7 @@ function App() {
       const delta = keyDelta(event.code);
       if (delta && game.screen === 'game') {
         event.preventDefault();
+        playRetroSound('move', soundEnabled);
         setGame((prev) => movePlayer(prev, delta[0], delta[1]));
       }
       if (event.code === 'KeyB') setGame((prev) => ({ ...prev, screen: prev.screen === 'gang' ? 'game' : 'gang' }));
@@ -118,11 +172,19 @@ function App() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [game, pending]);
+  }, [game, pending, recruitSearch, recruitSearchStarted, soundEnabled]);
 
   const startNew = () => {
     localStorage.removeItem(SAVE_KEY);
-    setGame(newGame(startingStats));
+    playRetroSound('menu', soundEnabled);
+    setGame(newGame(startingStats, playerName, gangName));
+  };
+
+  const toggleSound = () => {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    localStorage.setItem(SOUND_KEY, next ? 'on' : 'off');
+    playRetroSound('menu', next);
   };
 
   const confirm = (nextPending: Pending) => setPending(nextPending);
@@ -131,8 +193,13 @@ function App() {
     if (!pending) return;
     setGame((prev) => {
       const result = pending.onConfirm(prev);
-      if (isActionResult(result)) return result.combat ? { ...result.state, screen: 'combat', combat: result.combat } : result.state;
-      return result;
+      const next: GameState = isActionResult(result) ? (result.combat ? { ...result.state, screen: 'combat' as const, combat: result.combat } : result.state) : result;
+      const title = next.result?.title ?? '';
+      if (result && isActionResult(result) && result.combat) playRetroSound('gunshot', soundEnabled);
+      else if (/gekauft|verkauft|gestohlen|Erfolg|gelungen|gemietet|organisiert|Rekrutiert|Behandelt/i.test(title)) playRetroSound(title.includes('gekauft') || title.includes('verkauft') || title.includes('gestohlen') ? 'cash' : 'success', soundEnabled);
+      else if (/Fehlschlag|Nicht möglich|gescheitert|verloren/i.test(title)) playRetroSound('failure', soundEnabled);
+      else if (title.startsWith('Steckbrief')) playRetroSound('month', soundEnabled);
+      return next;
     });
     setPending(null);
   };
@@ -231,17 +298,27 @@ function App() {
     });
   };
 
+  const finishRecruitSearch = () => {
+    const templateId = recruitTemplateRef.current;
+    if (!templateId) return;
+    if (recruitTimerRef.current != null) window.clearTimeout(recruitTimerRef.current);
+    recruitTimerRef.current = null;
+    recruitTemplateRef.current = null;
+    setRecruitSearch(null);
+    askRecruit(templateId);
+  };
+
   const searchRecruit = (templateId: string) => {
     const lines = [
       'Du schaust Dich in der Kneipe um...',
       'Der Wirt nickt Dir kaum merklich zu...',
       Math.random() < 0.5 ? 'Da scheint sich eine Dame für Dich zu interessieren...' : 'Ein finsterer Kerl beobachtet Dich aus der Ecke...',
     ];
+    recruitTemplateRef.current = templateId;
+    setRecruitSearchStarted(Date.now());
     setRecruitSearch(lines.join('\n'));
-    window.setTimeout(() => {
-      setRecruitSearch(null);
-      askRecruit(templateId);
-    }, 650);
+    if (recruitTimerRef.current != null) window.clearTimeout(recruitTimerRef.current);
+    recruitTimerRef.current = window.setTimeout(finishRecruitSearch, 4000);
   };
 
   const askTrainPlayer = (stat: 'strength' | 'intelligence' | 'brutality') => {
@@ -378,11 +455,21 @@ function App() {
           <p>Chicago, 1925. Straßen, Blüten, Fluchtwagen und Leute, die teuer werden, wenn sie loyal bleiben.</p>
           <div className="rollBox">
             <h2>Startwerte</h2>
+            <label>
+              Spielername
+              <input value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder={DEFAULT_PLAYER_NAME} />
+            </label>
+            <label>
+              Bandenname
+              <input value={gangName} onChange={(event) => setGangName(event.target.value)} placeholder={DEFAULT_GANG_NAMES[0]} />
+            </label>
+            <button onClick={() => setGangName(DEFAULT_GANG_NAMES[Math.floor(Math.random() * DEFAULT_GANG_NAMES.length)])}>Bandenname würfeln</button>
             <p>Intelligenz {startingStats.intelligence} / Stärke {startingStats.strength} / Brutalität {startingStats.brutality}</p>
             <button onClick={() => setStartingStats(rollStartingStats())}>Neu würfeln</button>
           </div>
         </section>
         <div className="menuButtons">
+          <button onClick={toggleSound}>{soundEnabled ? 'Sound aus' : 'Sound an'}</button>
           <button onClick={startNew}>Neues Spiel</button>
           <button disabled={!loaded} onClick={() => loaded && setGame(loaded)}>Spiel laden</button>
         </div>
@@ -445,12 +532,22 @@ function App() {
             <h3>Ziele</h3>
             <div className="unitList">
               {game.combat.enemies.map((enemy) => (
-                <button key={enemy.id} disabled={!selected || game.combat?.phase !== 'player'} onClick={() => selected && setGame((prev) => prev.combat ? { ...prev, combat: combatAttack(prev.combat, selected.id, enemy.id) } : prev)}>
+                <button key={enemy.id} disabled={!selected || game.combat?.phase !== 'player'} onClick={() => selected && setGame((prev) => {
+                  if (!prev.combat) return prev;
+                  const combat = combatAttack(prev.combat, selected.id, enemy.id);
+                  playRetroSound(combat.message.includes('verfehlt') ? 'miss' : 'gunshot', soundEnabled);
+                  return { ...prev, combat };
+                })}>
                   {enemyTargetLabel(selected, enemy)}
                 </button>
               ))}
             </div>
-            {game.combat.phase === 'enemy' && <button onClick={() => setGame((prev) => prev.combat ? { ...prev, combat: combatEnemyTurn(prev.combat) } : prev)}>Gegnerzug</button>}
+            {game.combat.phase === 'enemy' && <button onClick={() => setGame((prev) => {
+              if (!prev.combat) return prev;
+              const combat = combatEnemyTurn(prev.combat);
+              playRetroSound(combat.message.includes('verfehlt') ? 'miss' : combat.message.includes('trifft') ? 'gunshot' : 'move', soundEnabled);
+              return { ...prev, combat };
+            })}>Gegnerzug</button>}
             {game.combat.phase === 'finished' && <button onClick={() => setGame((prev) => prev.combat ? finishCombat(prev, prev.combat) : prev)}>Ausgang abrechnen</button>}
           </aside>
         </section>
@@ -465,9 +562,10 @@ function App() {
       <header className="topbar">
         <div>
           <strong>Unterwelt 1929</strong>
-          <span> {formatGameDate(game.month)} / {rank.name} / Rangpunkte {game.points} / Bewegung {game.stepsLeft}/{getCar(game.car).movementPoints}</span>
+          <span> {game.playerName} / {formatGameDate(game.month)} / {rank.name} / Rangpunkte {game.points} / Bewegung {game.stepsLeft}/{getCar(game.car).movementPoints}</span>
         </div>
         <div className="topActions">
+          <button onClick={toggleSound}>{soundEnabled ? 'Sound aus' : 'Sound an'}</button>
           <button onClick={() => setGame((prev) => ({ ...prev, screen: prev.screen === 'gang' ? 'game' : 'gang' }))}>{game.screen === 'gang' ? 'Karte' : 'Bande'}</button>
           <button onClick={handleSave}>Speichern</button>
           <button disabled={!hasSave} onClick={() => setGame(loadGame() ?? game)}>Laden</button>
@@ -480,6 +578,7 @@ function App() {
           game={game}
           storyId={storyId}
           setStoryId={setStoryId}
+          renameGang={(name) => setGame((prev) => ({ ...prev, gangName: name }))}
           askEquipPlayer={askEquipPlayer}
           askEquip={askEquip}
           askTrain={askTrain}
@@ -502,7 +601,10 @@ function App() {
                       className={`tile district-${districtClass(tile.district)} kind-${tile.kind} ${tile.building ? 'buildingFootprintTile' : ''} ${tile.buildingVisualFor ? 'buildingBlockTile' : ''} ${tile.entranceFor ? 'entranceTile' : ''} ${adjacentReachable ? 'reachableTile' : ''} ${playerHere ? 'playerTile' : ''}`}
                       onClick={() => {
                         const distance = Math.abs(tile.x - game.position.x) + Math.abs(tile.y - game.position.y);
-                        if (distance === 1) setGame(movePlayer(game, tile.x - game.position.x, tile.y - game.position.y));
+                        if (distance === 1) {
+                          playRetroSound('move', soundEnabled);
+                          setGame(movePlayer(game, tile.x - game.position.x, tile.y - game.position.y));
+                        }
                       }}
                       title={`${building?.name ?? visual.name} / ${tile.district}`}
                     >
@@ -542,6 +644,8 @@ function App() {
               <p className="statHelp">Rangpunkte bestimmen Deinen Rang. Straßenruf beeinflusst Respekt, Preise und Erfolgschancen.</p>
               <dl>
                 <dt>Geld</dt><dd>{formatMoney(game.stats.money)}</dd>
+                <dt>Name</dt><dd>{game.playerName}</dd>
+                <dt>Bande</dt><dd>{game.gangName}</dd>
                 <dt>Monat</dt><dd>{formatGameDate(game.month)}</dd>
                 <dt>Rang</dt><dd>{rank.name}</dd>
                 <dt>Rangpunkte</dt><dd title="Rangpunkte bestimmen Deinen langfristigen Rang.">{game.points}{rank.next ? ` / ${rank.next.points}` : ''}</dd>
@@ -580,10 +684,10 @@ function App() {
               <p>Fahndung: {game.stats.wanted}, Blütenrisiko: {game.stats.counterfeit}/10, Pass: {game.stats.passport ? 'Ja' : 'Nein'}</p>
             </div>
             <div className="modalButtons">
-              <button onClick={() => setGame((prev) => resolvePoliceCheck(prev, 'calm'))}>Ruhig bleiben</button>
-              <button onClick={() => setGame((prev) => resolvePoliceCheck(prev, 'bribe'))}>Bestechen</button>
-              <button onClick={() => setGame((prev) => resolvePoliceCheck(prev, 'flee'))}>Fliehen</button>
-              <button disabled={!game.stats.passport} onClick={() => setGame((prev) => resolvePoliceCheck(prev, 'passport'))}>Falschen Pass zeigen</button>
+              <button onClick={() => { playRetroSound('police', soundEnabled); setGame((prev) => resolvePoliceCheck(prev, 'calm')); }}>Ruhig bleiben</button>
+              <button onClick={() => { playRetroSound('police', soundEnabled); setGame((prev) => resolvePoliceCheck(prev, 'bribe')); }}>Bestechen</button>
+              <button onClick={() => { playRetroSound('police', soundEnabled); setGame((prev) => resolvePoliceCheck(prev, 'flee')); }}>Fliehen</button>
+              <button disabled={!game.stats.passport} onClick={() => { playRetroSound('police', soundEnabled); setGame((prev) => resolvePoliceCheck(prev, 'passport')); }}>Falschen Pass zeigen</button>
             </div>
           </section>
         </div>
@@ -591,10 +695,11 @@ function App() {
 
       {recruitSearch && (
         <div className="modalBackdrop" role="presentation">
-          <section className="modal" role="dialog" aria-modal="true">
+          <section className="modal" role="dialog" aria-modal="true" onClick={() => Date.now() - recruitSearchStarted > 1000 && finishRecruitSearch()}>
             <h2>Kneipe</h2>
             <div className="modalLines">
               {recruitSearch.split('\n').map((line) => <p key={line}>{line}</p>)}
+              <p>Nach einer Sekunde: klicken oder Leertaste zum Überspringen.</p>
             </div>
           </section>
         </div>
@@ -928,6 +1033,7 @@ function GangScreen({
   game,
   storyId,
   setStoryId,
+  renameGang,
   askEquipPlayer,
   askEquip,
   askTrain,
@@ -937,6 +1043,7 @@ function GangScreen({
   game: GameState;
   storyId: string | null;
   setStoryId: (id: string | null) => void;
+  renameGang: (name: string) => void;
   askEquipPlayer: (ownedWeaponId: string) => void;
   askEquip: (memberId: string, ownedWeaponId: string) => void;
   askTrain: (memberId: string, stat: 'strength' | 'intelligence' | 'brutality' | 'shooting' | 'driving') => void;
@@ -947,11 +1054,15 @@ function GangScreen({
   return (
     <section className="gangScreen">
       <div className="panel gangManagement">
-        <h2>Bandenverwaltung</h2>
+        <h2>{game.gangName}</h2>
+        <label className="inlineField">
+          Bandenname
+          <input value={game.gangName} onChange={(event) => renameGang(event.target.value)} />
+        </label>
         <article className="gangCard playerCard">
           <div className="portrait large">DU</div>
           <div className="gangDetails">
-            <h3>Unbekannter aus Chicago <span>"Du"</span></h3>
+            <h3>{game.playerName} <span>"Du"</span></h3>
             <p>Spieler / Status: aktiv / Waffe: {getPlayerWeapon(game).name}</p>
             <div className="statStrip">
               <span>ST {game.stats.strength}</span>

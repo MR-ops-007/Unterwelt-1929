@@ -271,6 +271,8 @@ export interface ProtectionChallenge {
 
 export interface GameState {
   screen: Screen;
+  playerName: string;
+  gangName: string;
   month: number;
   points: number;
   position: { x: number; y: number };
@@ -301,6 +303,8 @@ export interface GameState {
 }
 
 export const SAVE_KEY = 'unterwelt-1929-save';
+export const DEFAULT_PLAYER_NAME = 'Unbekannter aus Chicago';
+export const DEFAULT_GANG_NAMES = ['Die Nordstadt-Jungs', 'Die Schwarzen Hüte', 'Die 12. Straße', 'Edes Schatten', 'Die Hafenratten'];
 export const MAP_WIDTH = 32;
 export const MAP_HEIGHT = 24;
 export const MAP_SIZE = MAP_WIDTH;
@@ -699,8 +703,8 @@ export const actions: ActionConfig[] = [
   { id: 'pawn-sale', name: 'Beute versetzen', building: 'pawnshop', cost: 0, reward: [80, 260], risk: 'niedrig', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'pawn-sale', effect: 'Kleiner sicherer Erlös.', failure: 'Der Pfandleiher drückt den Preis.' },
   { id: 'subway-pickpocket', name: 'Taschendiebstahl am Bahnsteig', building: 'subway', cost: 0, reward: [90, 350], risk: 'niedrig', policeRisk: 1, reputationEffect: 1, requirements: [], rank: 'Kleiner Fisch', stepCost: 1, pointEffect: 1, cooldownKey: 'subway', effect: 'Viele Taschen, wenig Licht.', failure: 'Ein Schaffner schaut zu genau hin.' },
   { id: 'blackmail', name: 'Schutzgeld eintreiben', building: 'kneipe', cost: 0, reward: [320, 900], risk: 'mittel', policeRisk: 1, reputationEffect: 2, requirements: [], rank: 'Langfinger', stepCost: 2, pointEffect: 2, cooldownKey: 'blackmail', recommendedRoles: ['Schlaeger', 'Verhandler'], gangSlots: 1, effect: 'Brutalität und Verhandlungsgeschick zählen.', failure: 'Das Opfer rennt zur Polizei.' },
-  { id: 'rent-room', name: 'Hotelzimmer mieten', building: 'hotel', cost: 900, risk: 'niedrig', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'rent-room', effect: 'Ein Zimmer als Basis. Ab jetzt kannst Du einfache Leute anwerben.', failure: 'Der Portier will echtes Geld.' },
-  { id: 'found-gang', name: 'Bande organisieren', building: 'hideout', cost: 0, risk: 'niedrig', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'found-gang', effect: 'Du ordnest Kontakte, Betten und Regeln. Kein teurer Gründungsritus.', failure: 'Niemand hört richtig zu.' },
+  { id: 'rent-room', name: 'Hotelzimmer mieten', building: 'hotel', cost: 900, risk: 'niedrig', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'rent-room', effect: 'Ein Zimmer als erste Adresse Deiner Bande. Rekrutierung und Bandenverwaltung werden freigeschaltet.', failure: 'Der Portier will echtes Geld.' },
+  { id: 'found-gang', name: 'Bande organisieren', building: 'hideout', cost: 0, risk: 'niedrig', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'found-gang', effect: 'Bandenname, Treffpunkt und Regeln festlegen. Schaltet die Bandenverwaltung frei. Keine Punkte, keine Kosten.', failure: 'Niemand hört richtig zu.' },
   { id: 'bank-robbery', name: 'Bank überfallen', building: 'bank', cost: 250, reward: [5000, 25000], risk: 'sehr hoch', policeRisk: 3, reputationEffect: 5, requirements: [{ rank: 'Mafiosi' }, { activeGang: 1 }], rank: 'Mafiosi', stepCost: 3, pointEffect: 4, cooldownKey: 'bank-robbery', recommendedRoles: ['Safeknacker', 'Planer', 'Fahrerin'], gangSlots: 3, danger: 2, effect: 'Große Beute, großer Ruhm, große Akte.', failure: 'Verletzung, Verhaftung oder Geldverlust möglich.' },
   { id: 'safe-crack', name: 'Tresor knacken', building: 'bank', cost: 400, reward: [3000, 13000], risk: 'hoch', policeRisk: 2, reputationEffect: 3, requirements: [{ rank: 'Mafiosi' }, { stat: 'intelligence', min: 45 }, { activeGang: 1 }], rank: 'Mafiosi', stepCost: 3, pointEffect: 3, cooldownKey: 'safe-crack', recommendedRoles: ['Safeknacker', 'Planer'], effect: 'Leiser als ein Banküberfall, aber nicht weniger schwer.', failure: 'Der Tresor schweigt, die Sirene nicht.' },
   { id: 'casino-gamble', name: 'Im Casino spielen', building: 'casino', cost: 300, reward: [0, 1200], risk: 'mittel', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'casino-gamble', effect: 'Alte Option: wird durch die Tische ersetzt.', failure: 'Das Haus gewinnt.' },
@@ -1008,10 +1012,16 @@ export function rollStartingStats(): Pick<PlayerStats, 'strength' | 'intelligenc
   return { strength: roll(), intelligence: roll(), brutality: roll() };
 }
 
-export function newGame(startingStats: Pick<PlayerStats, 'strength' | 'intelligence' | 'brutality'> = rollStartingStats()): GameState {
+export function newGame(
+  startingStats: Pick<PlayerStats, 'strength' | 'intelligence' | 'brutality'> = rollStartingStats(),
+  playerName = DEFAULT_PLAYER_NAME,
+  gangName = DEFAULT_GANG_NAMES[Math.floor(Math.random() * DEFAULT_GANG_NAMES.length)],
+): GameState {
   const car = 'foot';
   return {
     screen: 'game',
+    playerName: playerName.trim() || DEFAULT_PLAYER_NAME,
+    gangName: gangName.trim() || DEFAULT_GANG_NAMES[0],
     month: 0,
     points: 0,
     position: { x: 3, y: 2 },
@@ -1044,7 +1054,7 @@ export function newGame(startingStats: Pick<PlayerStats, 'strength' | 'intellige
     policeCheckCooldownUntilMonth: 0,
     policeProtectionUntilMonth: 0,
     map: createMap(),
-    log: [{ month: 0, text: 'Chicago, 01/1925. Du hast $700, einen schlechten Mantel und keinen Namen auf der Straße.' }],
+    log: [{ month: 0, text: `Chicago, 01/1925. ${playerName.trim() || DEFAULT_PLAYER_NAME} hat $700, einen schlechten Mantel und keinen Namen auf der Straße.` }],
   };
 }
 
@@ -1087,6 +1097,8 @@ export function loadGame(): GameState | null {
       ...base,
       ...state,
       screen: 'game',
+      playerName: state.playerName?.trim() || DEFAULT_PLAYER_NAME,
+      gangName: state.gangName?.trim() || DEFAULT_GANG_NAMES[0],
       points: state.points ?? 0,
       car: cars.some((car) => car.id === state.car) ? state.car as CarId : 'foot',
       hotelRoom: Boolean(state.hotelRoom),
@@ -1265,6 +1277,17 @@ function failedWantedIncrease(action: ActionConfig): number {
 function failedDamage(action: ActionConfig): number {
   if (['beg', 'pawn-sale', 'loan-take', 'loan-repay', 'casino-gamble', 'casino-roulette', 'casino-high-table', 'rent-room', 'found-gang'].includes(action.id)) return 0;
   return action.risk === 'sehr hoch' ? 30 : action.risk === 'hoch' ? 20 : 10;
+}
+
+function stolenCarCandidate(state: GameState): CarId {
+  const district = state.map.find((tile) => tile.x === state.position.x && tile.y === state.position.y)?.district;
+  const rankIndex = ranks.findIndex((rank) => rank.name === getRank(state.points).name);
+  const quality = state.stats.reputation + rankIndex * 8 + (district === 'Villenviertel' ? 20 : district === 'Bahnhofsviertel' ? 10 : district === 'Industriegebiet' ? 6 : 0) + Math.random() * 35;
+  if (quality > 85) return 'auburn120';
+  if (quality > 68) return 'buickCentury';
+  if (quality > 52) return 'chevyRoadster';
+  if (quality > 35) return 'citroenTa';
+  return 'talbot90';
 }
 
 export function describeAction(state: GameState, action: ActionConfig): string[] {
@@ -1507,12 +1530,12 @@ export function resolveAction(state: GameState, actionId: ActionId): ActionResul
 
   if (action.id === 'rent-room') {
     next = markMonthlyActivity({ ...next, hotelRoom: true, gangFounded: true }, action);
-    return { state: withResult(addLog(next, 'Du mietest ein Hotelzimmer. Jetzt hast Du eine Adresse für Leute, die nicht fragen.'), 'Hotelzimmer gemietet', ['Hotelzimmer aktiv.', 'Einfache Rekrutierung freigeschaltet.']) };
+    return { state: withResult(addLog(next, `${next.gangName} hat jetzt eine diskrete Adresse.`), 'Hotelzimmer gemietet', [`${next.gangName} hat eine erste Adresse.`, 'Bandenverwaltung freigeschaltet.', 'Rekrutierung möglich.']) };
   }
 
   if (action.id === 'found-gang') {
     next = markMonthlyActivity({ ...next, gangFounded: true }, action);
-    return { state: withResult(addLog(next, 'Du organisierst Betten, Regeln und Treffpunkte. Keine Zeremonie, nur Ordnung.'), 'Bande organisiert', ['Rekrutierung ist freigeschaltet, sobald Du eine Unterkunft hast.', 'Kein Handgeld, kein Rangsprung.']) };
+    return { state: withResult(addLog(next, `${next.gangName}: Treffpunkt, Regeln und Zuständigkeiten stehen.`), 'Bande organisiert', [`Name: ${next.gangName}.`, 'Bandenverwaltung freigeschaltet.', 'Kein Handgeld, kein Rangsprung.']) };
   }
 
   if (action.id === 'lay-low') {
@@ -1566,16 +1589,22 @@ export function resolveAction(state: GameState, actionId: ActionId): ActionResul
   }
 
   if (action.id === 'steal-car') {
-    const wonCar = success ? (Math.random() < 0.55 ? 'talbot90' : 'chevyRoadster') as CarId : undefined;
-    const points = success ? awardRankPoints(next, action.pointEffect ?? 0) : undefined;
+    const foundCar = success ? stolenCarCandidate(next) : undefined;
+    const found = foundCar ? getCar(foundCar) : undefined;
+    const current = getCar(next.car);
+    const better = found ? found.movementPoints > current.movementPoints : false;
+    const points = success && better ? awardRankPoints(next, action.pointEffect ?? 0) : undefined;
     next = points?.state ?? next;
     next = {
       ...next,
-      car: wonCar ?? next.car,
-      stats: { ...next.stats, wanted: clamp(next.stats.wanted + (success ? 1 : 2), 0, 10), reputation: clamp(next.stats.reputation + (success ? 1 : 0), 0, 99) },
+      car: better && foundCar ? foundCar : next.car,
+      stats: { ...next.stats, wanted: clamp(next.stats.wanted + (success ? 1 : 2), 0, 10), reputation: clamp(next.stats.reputation + (success && better ? 1 : 0), 0, 99) },
     };
     next = markMonthlyActivity(next, action, !success);
-    return { state: withResult(addLog(next, success && wonCar ? `${getCar(wonCar).name} gestohlen.` : 'Autodiebstahl scheitert.'), success ? 'Auto gestohlen' : 'Fehlschlag', success && wonCar ? [`${getCar(wonCar).name} ist jetzt aktiv.`, `Rangpunkte +${points?.gained ?? 0}.`, points?.capped ? 'Mehr Ruhm holst Du diesen Monat nicht aus der Straße.' : `Monatslimit: ${next.monthlyPointGain}/${MONTHLY_POINT_CAP}.`] : ['Ein Wachmann schlägt Alarm.', 'Fahndung steigt.']) };
+    if (success && found && !better) {
+      return { state: withResult(addLog(next, `Nur ein ${found.name}. Nicht besser als Dein aktueller Wagen.`), 'Kein besserer Wagen', [`Nur ein ${found.name}. Nicht besser als Dein aktueller Wagen.`, `Aktuell: ${current.name}.`, 'Fahndung +1.']) };
+    }
+    return { state: withResult(addLog(next, success && found ? `${found.name} gestohlen.` : 'Autodiebstahl scheitert.'), success ? 'Auto gestohlen' : 'Fehlschlag', success && found ? [`${found.name} ist jetzt aktiv.`, `Bewegung: ${found.movementPoints} Schritte pro Monat.`, `Rangpunkte +${points?.gained ?? 0}.`, points?.capped ? 'Mehr Ruhm holst Du diesen Monat nicht aus der Straße.' : `Monatslimit: ${next.monthlyPointGain}/${MONTHLY_POINT_CAP}.`] : ['Ein Wachmann schlägt Alarm.', 'Fahndung steigt.']) };
   }
 
   if (success) {
@@ -1745,7 +1774,7 @@ export function processMonth(state: GameState): GameState {
   const weapon = getPlayerWeapon(next);
   return withResult(next, `Steckbrief ${formatGameDate(next.month)}`, [
     '[||||]',
-    'Name: Unbekannter aus Chicago',
+    `Name: ${next.playerName}`,
     `Rang: ${currentRank}${currentRank !== previousRank ? ` (Aufstieg von ${previousRank})` : ''}`,
     `Rangpunkte: ${next.points}`,
     `Monatsruhm: ${previousMonthlyPointGain}/${MONTHLY_POINT_CAP}`,
@@ -1754,7 +1783,7 @@ export function processMonth(state: GameState): GameState {
     `Gesundheit: ${next.stats.health}`,
     `Waffe: ${weapon.name}`,
     `Auto: ${getCar(next.car).name}`,
-    `Bande: ${activeGang(next.gang).length}/${next.gang.length} aktiv`,
+    `Bande: ${next.gangName} (${activeGang(next.gang).length}/${next.gang.length} aktiv)`,
     `Monatliche Einnahmen: ${formatMoney(income)}`,
     `Monatlicher Unterhalt: ${formatMoney(upkeep)}`,
     ...events,
@@ -2057,7 +2086,7 @@ export function makeCombat(state: GameState, kind: 'police' | 'rival', scenarioI
   occupied.add(`${playerSpawn.x}-${playerSpawn.y}`);
   const player: CombatAlly = {
     id: 'player',
-    name: 'Unbekannter aus Chicago',
+    name: state.playerName,
     nickname: 'Du',
     role: 'Spieler',
     status: 'aktiv',
