@@ -26,7 +26,7 @@ export type District =
   | 'Bahnhofsviertel'
   | 'Polizeibezirk';
 
-export type TileKind = 'road' | 'sidewalk' | 'building' | 'decor' | 'street' | 'alley' | 'park' | 'warehouse' | 'lamp' | 'wall' | 'yard' | 'block' | 'water' | 'rails';
+export type TileKind = 'road' | 'sidewalk' | 'building' | 'decor' | 'street' | 'alley' | 'park' | 'warehouse' | 'lamp' | 'wall' | 'yard' | 'block' | 'water' | 'rails' | 'dock';
 export type MemberStatus = 'aktiv' | 'verletzt' | 'verhaftet' | 'tot';
 export type Role = 'Schlaeger' | 'Fahrerin' | 'Planer' | 'Safeknacker' | 'Schuetzin' | 'Informant' | 'Verhandler';
 export type WeaponId = 'none' | 'colt1911' | 'savage1907' | 'remington11' | 'winchester97' | 'sw10' | 'thompson' | 'browningBar' | 'grenades';
@@ -238,6 +238,7 @@ export interface Tile {
   kind: TileKind;
   building?: BuildingType;
   buildingVisualFor?: BuildingType;
+  buildingLabel?: string;
 }
 
 export interface LogEntry {
@@ -805,32 +806,33 @@ export const tileVisuals: Record<TileKind, { icon: string; name: string }> = {
   block: { icon: '▒', name: 'Block' },
   water: { icon: '~', name: 'Hafenwasser' },
   rails: { icon: '=', name: 'Gleise' },
+  dock: { icon: ':', name: 'Kai' },
 };
 
 const cityLayout = [
   '################################',
-  '#..VV..RR....SSS...PPPP..NNN...#',
-  '#..VV..RR....SSS...PPPP..NNN...#',
-  '#......RR......................#',
-  '#..KK..RR..EEE..RR..BBB..LL....#',
-  '#..KK..RR..EEE..RR..BBB..LL....#',
-  '#......RR......RR..............#',
-  'RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR',
-  '#~~~~~..RR..MMM..RR..WWW..XX...#',
-  '#~~~~~..RR..MMM..RR..WWW..XX...#',
-  '#~~~~~...........RR............#',
-  '#~~~~~..SSS..RR..CCC..RR..AAA..#',
-  '#~~~~~..SSS..RR..CCC..RR..AAA..#',
-  'RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR',
-  '#..UU..RR..ZZZZ..RR..BBB..HH...#',
-  '#..UU..RR..ZZZZ..RR..BBB..HH...#',
-  '#......RR..====..RR............#',
-  '#..KK..RR..SSS...RR..CCC..AA...#',
-  '#..KK..RR..SSS...RR..CCC..AA...#',
-  'RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR',
-  '#..HH..RR..BBB...RR..TTTTTT....#',
-  '#..HH..RR..BBB...RR..TYYYTT....#',
-  '#......RR........RR...YYYTT....#',
+  '#VV..SS.RR.BB..EE.RR.PPPP.NN...#',
+  '#VV..SS.RR.BB.....RR.PPPP......#',
+  '#....RRRR....SS...RR...........#',
+  '#KK..RR..UU..BB..LL..SS..KK....#',
+  '#KK......RR..WW..LL..SS........#',
+  '####..RRRRRRRRRRRRRRRR..#####..#',
+  '~~~~~~:MMM..WW..XX..RR..AA.....#',
+  '~~~~~~:MMM..WW..XX..RR..AA.....#',
+  '~~~~~~:SS...RR..RR..RR.........#',
+  '~~~~~~:KK...RR..CCC.RR..LL.....#',
+  '~~~~~~:.....RR..CCC.....SS.....#',
+  '######RRRRRRRRRRRRRRRRRRRR###..#',
+  '#..HH..UU..ZZZZ..RR..BB..HH....#',
+  '#..HH..RR..ZZZZ..RR..BB..HH....#',
+  '#......RR..==================..#',
+  '#..SS..RR..XX..UU..CC..AA......#',
+  '#..KK......SS..RR..CC..AA......#',
+  '####..RRRRRRRRRRRRRR..RR..###..#',
+  '#..HH..RR..BB..RR..YYYY..TTT...#',
+  '#..HH..RR..BB..RR..YYYY..TTT...#',
+  '#..SS..RR..CC..RR..YYYY..AA....#',
+  '#......RR......RR..TTT..TTT....#',
   '################################',
 ] as const;
 
@@ -854,32 +856,48 @@ const buildingChars: Partial<Record<string, BuildingType>> = {
   Y: 'villa',
 };
 
-const buildingLabels: Array<{ x: number; y: number; building: BuildingType }> = [
-  { x: 3, y: 1, building: 'hideout' },
-  { x: 13, y: 1, building: 'shop' },
-  { x: 19, y: 1, building: 'police' },
-  { x: 27, y: 1, building: 'hospital' },
-  { x: 3, y: 4, building: 'kneipe' },
-  { x: 12, y: 4, building: 'counterfeit' },
-  { x: 22, y: 4, building: 'bank' },
-  { x: 27, y: 4, building: 'loanshark' },
-  { x: 12, y: 8, building: 'harbor' },
-  { x: 22, y: 8, building: 'weapons' },
-  { x: 27, y: 8, building: 'pawnshop' },
-  { x: 9, y: 11, building: 'shop' },
-  { x: 19, y: 11, building: 'casino' },
-  { x: 28, y: 11, building: 'cars' },
-  { x: 3, y: 14, building: 'subway' },
-  { x: 12, y: 14, building: 'station' },
-  { x: 22, y: 14, building: 'bank' },
-  { x: 27, y: 14, building: 'hotel' },
-  { x: 3, y: 17, building: 'kneipe' },
-  { x: 11, y: 17, building: 'shop' },
-  { x: 22, y: 17, building: 'casino' },
-  { x: 28, y: 17, building: 'cars' },
-  { x: 3, y: 20, building: 'hotel' },
-  { x: 11, y: 20, building: 'bank' },
-  { x: 22, y: 22, building: 'villa' },
+const buildingLabels: Array<{ x: number; y: number; building: BuildingType; label?: string }> = [
+  { x: 2, y: 2, building: 'hideout', label: 'VERST' },
+  { x: 5, y: 1, building: 'shop', label: 'S' },
+  { x: 11, y: 1, building: 'bank', label: 'BANK' },
+  { x: 15, y: 1, building: 'counterfeit', label: 'EDE' },
+  { x: 21, y: 1, building: 'police', label: 'POL' },
+  { x: 26, y: 1, building: 'hospital', label: 'KH' },
+  { x: 1, y: 4, building: 'kneipe', label: 'K' },
+  { x: 9, y: 4, building: 'subway', label: 'U' },
+  { x: 13, y: 4, building: 'bank', label: 'B' },
+  { x: 17, y: 4, building: 'loanshark', label: 'KREDIT' },
+  { x: 21, y: 4, building: 'shop', label: 'S' },
+  { x: 25, y: 4, building: 'kneipe', label: 'K' },
+  { x: 13, y: 5, building: 'weapons', label: 'WAFF' },
+  { x: 7, y: 7, building: 'harbor', label: 'HAFEN' },
+  { x: 12, y: 7, building: 'weapons', label: 'W' },
+  { x: 16, y: 7, building: 'pawnshop', label: 'PFAND' },
+  { x: 24, y: 7, building: 'cars', label: 'AUTO' },
+  { x: 7, y: 9, building: 'shop', label: 'S' },
+  { x: 7, y: 10, building: 'kneipe', label: 'K' },
+  { x: 16, y: 10, building: 'casino', label: 'CAS' },
+  { x: 24, y: 10, building: 'loanshark', label: 'L' },
+  { x: 25, y: 11, building: 'shop', label: 'S' },
+  { x: 3, y: 13, building: 'hotel', label: 'HOTEL' },
+  { x: 7, y: 13, building: 'subway', label: 'U' },
+  { x: 11, y: 13, building: 'station', label: 'BHF' },
+  { x: 21, y: 13, building: 'bank', label: 'B' },
+  { x: 25, y: 13, building: 'hotel', label: 'H' },
+  { x: 3, y: 16, building: 'shop', label: 'S' },
+  { x: 11, y: 16, building: 'pawnshop', label: 'P' },
+  { x: 15, y: 16, building: 'subway', label: 'U' },
+  { x: 20, y: 16, building: 'casino', label: 'C' },
+  { x: 24, y: 16, building: 'cars', label: 'A' },
+  { x: 3, y: 17, building: 'kneipe', label: 'K' },
+  { x: 11, y: 17, building: 'shop', label: 'S' },
+  { x: 3, y: 19, building: 'hotel', label: 'HOTEL' },
+  { x: 11, y: 19, building: 'bank', label: 'BANK' },
+  { x: 19, y: 19, building: 'villa', label: 'VILLA' },
+  { x: 3, y: 21, building: 'shop', label: 'S' },
+  { x: 11, y: 21, building: 'casino', label: 'CAS' },
+  { x: 22, y: 21, building: 'villa', label: 'V' },
+  { x: 25, y: 21, building: 'cars', label: 'A' },
 ];
 
 export function getWeapon(id: WeaponId): WeaponConfig {
@@ -923,11 +941,11 @@ export function getAction(id: ActionId): ActionConfig {
 
 function districtFor(x: number, y: number): District {
   if (x >= 22 && y <= 8) return 'Polizeibezirk';
-  if (x <= 8 && y >= 9) return 'Hafenviertel';
-  if (x >= 20 && y >= 16) return 'Villenviertel';
-  if (y >= 14) return 'Bahnhofsviertel';
-  if (x >= 8 && x <= 17 && y >= 8) return 'Industriegebiet';
-  if (x >= 16 && y >= 4 && y <= 14) return 'Rotlichtgasse';
+  if (x <= 10 && y >= 7 && y <= 12) return 'Hafenviertel';
+  if (y >= 19) return 'Villenviertel';
+  if (y >= 13 && y <= 18) return 'Bahnhofsviertel';
+  if (x >= 8 && x <= 18 && y >= 7 && y <= 12) return 'Industriegebiet';
+  if (x >= 16 && y >= 7 && y <= 12) return 'Rotlichtgasse';
   return 'Altstadt';
 }
 
@@ -936,6 +954,7 @@ function kindForLayoutChar(char: string): TileKind {
   if (char === '.') return 'sidewalk';
   if (char === '~') return 'water';
   if (char === '=') return 'rails';
+  if (char === ':') return 'dock';
   if (char === 'T') return 'park';
   if (char === '#') return 'block';
   return buildingChars[char] ? 'building' : 'decor';
@@ -960,6 +979,7 @@ export function createMap(): Tile[] {
         kind: kindForLayoutChar(char),
         building,
         buildingVisualFor: label?.building,
+        buildingLabel: label?.label,
       });
     }
   }
@@ -994,8 +1014,37 @@ export function validateMapConnectivity(map: Tile[] = createMap(), start = { x: 
   }
   const unreachable = map.filter((tile) => tile.buildingVisualFor && !adjacentWalkableSeen(tile, map, seen));
   const buildingsWithoutReachableAdjacency = buildings.filter((building) => !map.some((tile) => tile.building === building.id && adjacentWalkableSeen(tile, map, seen)));
-  if (unreachable.length || buildingsWithoutReachableAdjacency.length) {
-    console.warn('Map connectivity failed', { unreachable, buildingsWithoutReachableAdjacency });
+  const counts = buildingLabels.reduce<Record<string, number>>((sum, label) => {
+    sum[label.building] = (sum[label.building] ?? 0) + 1;
+    return sum;
+  }, {});
+  const missingActionBuildings = buildings.filter((building) => building.actions.length > 0 && !counts[building.id]);
+  const harborTiles = map.filter((tile) => tile.building === 'harbor');
+  const stationTiles = map.filter((tile) => tile.building === 'station');
+  const harborTouchesWater = harborTiles.some((tile) => neighborKinds(tile, map).some((kind) => kind === 'water' || kind === 'dock'));
+  const stationTouchesRails = stationTiles.some((tile) => neighborKinds(tile, map).some((kind) => kind === 'rails' || kind === 'sidewalk'));
+  const belowTargets = {
+    shop: 7,
+    hotel: 3,
+    bank: 4,
+    kneipe: 4,
+    cars: 3,
+    casino: 3,
+    subway: 3,
+    loanshark: 2,
+    weapons: 2,
+  };
+  const lowCounts = Object.entries(belowTargets).filter(([building, target]) => (counts[building] ?? 0) < target);
+  if (unreachable.length || buildingsWithoutReachableAdjacency.length || missingActionBuildings.length || !harborTouchesWater || !stationTouchesRails || lowCounts.length) {
+    console.warn('Map validation warning', {
+      unreachable,
+      buildingsWithoutReachableAdjacency,
+      missingActionBuildings,
+      counts,
+      lowCounts,
+      harborTouchesWater,
+      stationTouchesRails,
+    });
   }
   return { valid: unreachable.length === 0, unreachable };
 }
@@ -1004,6 +1053,13 @@ function adjacentWalkableSeen(tile: Tile, map: Tile[], seen: Set<string>): boole
   return [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
     const neighbor = map.find((item) => item.x === tile.x + dx && item.y === tile.y + dy);
     return Boolean(neighbor && isWalkable(neighbor) && seen.has(neighbor.id));
+  });
+}
+
+function neighborKinds(tile: Tile, map: Tile[]): TileKind[] {
+  return [[1, 0], [-1, 0], [0, 1], [0, -1]].flatMap(([dx, dy]) => {
+    const neighbor = map.find((item) => item.x === tile.x + dx && item.y === tile.y + dy);
+    return neighbor ? [neighbor.kind] : [];
   });
 }
 
@@ -1164,7 +1220,7 @@ export function newGame(
     gangName: gangName.trim() || DEFAULT_GANG_NAMES[0],
     month: 0,
     points: 0,
-    position: { x: 3, y: 3 },
+    position: { x: 3, y: 2 },
     stepsLeft: getCar(car).movementPoints,
     stats: {
       money: 700,
@@ -2151,7 +2207,7 @@ export function movePlayer(state: GameState, dx: number, dy: number): GameState 
 }
 
 function isWalkable(tile: Tile): boolean {
-  return tile.kind === 'road' || tile.kind === 'sidewalk';
+  return tile.kind === 'road' || tile.kind === 'sidewalk' || tile.kind === 'dock';
 }
 
 function policeCheckRisk(state: GameState): number {

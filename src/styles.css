@@ -367,6 +367,15 @@ h3 {
   text-shadow: none;
 }
 
+.kind-dock {
+  background: #6d6555;
+}
+
+.kind-dock span {
+  color: #d7b56d;
+  text-shadow: none;
+}
+
 .kind-rails {
   background: #3d3b3f;
 }

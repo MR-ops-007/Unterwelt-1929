@@ -660,7 +660,7 @@ function App() {
                       }}
                       title={`${building?.name ?? visual.name} / ${tile.district}`}
                     >
-                      <span>{playerHere ? '@' : tile.buildingVisualFor ? getBuilding(tile.buildingVisualFor).mapLabel : tile.building ? '▓' : tile.kind === 'road' ? '' : visual.icon}</span>
+                      <span>{playerHere ? '@' : tile.buildingVisualFor ? tile.buildingLabel ?? getBuilding(tile.buildingVisualFor).mapLabel : tile.building ? '▓' : tile.kind === 'road' ? '' : visual.icon}</span>
                       <small></small>
                     </button>
                   );
