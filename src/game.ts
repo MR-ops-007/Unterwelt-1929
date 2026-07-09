@@ -26,7 +26,7 @@ export type District =
   | 'Bahnhofsviertel'
   | 'Polizeibezirk';
 
-export type TileKind = 'road' | 'sidewalk' | 'entrance' | 'building' | 'decor' | 'street' | 'alley' | 'park' | 'warehouse' | 'lamp' | 'wall' | 'yard' | 'block';
+export type TileKind = 'road' | 'sidewalk' | 'building' | 'decor' | 'street' | 'alley' | 'park' | 'warehouse' | 'lamp' | 'wall' | 'yard' | 'block' | 'water' | 'rails';
 export type MemberStatus = 'aktiv' | 'verletzt' | 'verhaftet' | 'tot';
 export type Role = 'Schlaeger' | 'Fahrerin' | 'Planer' | 'Safeknacker' | 'Schuetzin' | 'Informant' | 'Verhandler';
 export type WeaponId = 'none' | 'colt1911' | 'savage1907' | 'remington11' | 'winchester97' | 'sw10' | 'thompson' | 'browningBar' | 'grenades';
@@ -216,6 +216,8 @@ export interface TipConfig {
   guaranteedCombat?: boolean;
   scenario?: CombatScenarioId;
   rewardModifier?: number;
+  locationDistrict?: District;
+  distanceHint?: string;
 }
 
 export interface ActiveTip extends TipConfig {
@@ -236,7 +238,6 @@ export interface Tile {
   kind: TileKind;
   building?: BuildingType;
   buildingVisualFor?: BuildingType;
-  entranceFor?: BuildingType;
 }
 
 export interface LogEntry {
@@ -780,19 +781,18 @@ export const actions: ActionConfig[] = [
 ];
 
 export const tips: TipConfig[] = [
-  { id: 'tip-money-transport', title: 'Geldtransport am Bahnhof', text: 'Ein Fahrer trinkt zu viel und nennt Dir die Route eines Geldwagens.', cost: 350, tier: 'mid', requiredRank: 'Ganove', unlocksAction: 'money-transport', expiresInMonths: 1, guaranteedCombat: true, scenario: 'station', rewardModifier: 1.15 },
-  { id: 'tip-mayor-hit', title: 'Der Bürgermeister fährt privat', text: 'Ein Stadtrat sucht saubere Hände für eine dreckige Sache.', cost: 900, tier: 'late', requiredRank: 'Meuchelmörder', unlocksAction: 'mayor-hit', expiresInMonths: 1, guaranteedCombat: true, scenario: 'villa', rewardModifier: 1.05 },
-  { id: 'tip-bank-shift', title: 'Wachwechsel in der Bank', text: 'Der Nachtwächter wechselt um zehn vor zwölf die Zigarrenmarke.', cost: 420, tier: 'mid', requiredRank: 'Mafiosi', unlocksAction: 'bank-robbery', expiresInMonths: 1, scenario: 'bank', rewardModifier: 1.2 },
-  { id: 'tip-harbor-ledger', title: 'Frachtbuch am Hafen', text: 'Ein Kranführer weiß, welche Kisten nicht im Manifest stehen.', cost: 260, tier: 'early', requiredRank: 'Langfinger', unlocksAction: 'harbor-heist', expiresInMonths: 1, scenario: 'harbor', rewardModifier: 1.15 },
-  { id: 'tip-villa-servants', title: 'Dienerausgang der Villa', text: 'Ein Hausdiener verkauft Dir den Grundriss und eine Uhrzeit.', cost: 300, tier: 'early', requiredRank: 'Langfinger', unlocksAction: 'villa-burglary', expiresInMonths: 1, scenario: 'villa', rewardModifier: 1.15 },
-  { id: 'tip-train-mail', title: 'Postsack mit Wertpapieren', text: 'Am Freitag liegt im Postzug mehr Papier als Kohle.', cost: 700, tier: 'late', requiredRank: 'Bullenschreck', unlocksAction: 'train-robbery', expiresInMonths: 1, guaranteedCombat: true, scenario: 'station', rewardModifier: 1.25 },
-  { id: 'tip-alcohol-route', title: 'Durstige Hinterzimmer', text: 'Zwei Kneipen zahlen heute mehr fuer jeden Tropfen, der nicht versteuert wurde.', cost: 120, tier: 'early', unlocksAction: 'alcohol-sell', expiresInMonths: 1, rewardModifier: 1.35 },
+  { id: 'tip-money-transport', title: 'Geldtransport am Bahnhof', text: 'Ein Fahrer trinkt zu viel und nennt Dir die Route eines Geldwagens.', cost: 350, tier: 'mid', requiredRank: 'Ganove', unlocksAction: 'money-transport', expiresInMonths: 2, guaranteedCombat: true, scenario: 'station', rewardModifier: 1.15, locationDistrict: 'Bahnhofsviertel', distanceHint: 'Spezialauftrag - bleibt länger heiß.' },
+  { id: 'tip-mayor-hit', title: 'Der Bürgermeister fährt privat', text: 'Ein Stadtrat sucht saubere Hände für eine dreckige Sache.', cost: 900, tier: 'late', requiredRank: 'Meuchelmörder', unlocksAction: 'mayor-hit', expiresInMonths: 2, guaranteedCombat: true, scenario: 'villa', rewardModifier: 1.05, locationDistrict: 'Villenviertel', distanceHint: 'Weiter Weg - bleibt länger heiß.' },
+  { id: 'tip-bank-shift', title: 'Wachwechsel in der Bank', text: 'Der Nachtwächter wechselt um zehn vor zwölf die Zigarrenmarke.', cost: 420, tier: 'mid', requiredRank: 'Mafiosi', unlocksAction: 'bank-robbery', expiresInMonths: 1, scenario: 'bank', rewardModifier: 1.2, locationDistrict: 'Altstadt' },
+  { id: 'tip-harbor-ledger', title: 'Frachtbuch am Hafen', text: 'Ein Kranführer weiß, welche Kisten nicht im Manifest stehen.', cost: 260, tier: 'early', requiredRank: 'Langfinger', unlocksAction: 'harbor-heist', expiresInMonths: 1, scenario: 'harbor', rewardModifier: 1.15, locationDistrict: 'Hafenviertel' },
+  { id: 'tip-villa-servants', title: 'Dienerausgang der Villa', text: 'Ein Hausdiener verkauft Dir den Grundriss und eine Uhrzeit.', cost: 300, tier: 'early', requiredRank: 'Langfinger', unlocksAction: 'villa-burglary', expiresInMonths: 1, scenario: 'villa', rewardModifier: 1.15, locationDistrict: 'Villenviertel', distanceHint: 'Weiter Weg - bleibt länger heiß.' },
+  { id: 'tip-train-mail', title: 'Postsack mit Wertpapieren', text: 'Am Freitag liegt im Postzug mehr Papier als Kohle.', cost: 700, tier: 'late', requiredRank: 'Bullenschreck', unlocksAction: 'train-robbery', expiresInMonths: 2, guaranteedCombat: true, scenario: 'station', rewardModifier: 1.25, locationDistrict: 'Bahnhofsviertel', distanceHint: 'Spezialauftrag - bleibt länger heiß.' },
+  { id: 'tip-alcohol-route', title: 'Durstige Hinterzimmer', text: 'Zwei Kneipen zahlen heute mehr fuer jeden Tropfen, der nicht versteuert wurde.', cost: 120, tier: 'early', unlocksAction: 'alcohol-sell', expiresInMonths: 1, rewardModifier: 1.35, locationDistrict: 'Rotlichtgasse' },
 ];
 
 export const tileVisuals: Record<TileKind, { icon: string; name: string }> = {
   road: { icon: ' ', name: 'Straße' },
   sidewalk: { icon: '·', name: 'Gehweg' },
-  entrance: { icon: '▮', name: 'Eingang' },
   building: { icon: '█', name: 'Gebäude' },
   decor: { icon: '░', name: 'Block' },
   street: { icon: '·', name: 'Straße' },
@@ -803,17 +803,83 @@ export const tileVisuals: Record<TileKind, { icon: string; name: string }> = {
   wall: { icon: '█', name: 'Mauer' },
   yard: { icon: '▪', name: 'Hof' },
   block: { icon: '▒', name: 'Block' },
+  water: { icon: '~', name: 'Hafenwasser' },
+  rails: { icon: '=', name: 'Gleise' },
 };
 
-const buildingPositions: Array<[number, number, BuildingType]> = [
-  [1, 1, 'hideout'], [4, 1, 'shop'], [10, 1, 'bank'], [16, 1, 'shop'], [24, 1, 'police'], [30, 1, 'hospital'],
-  [1, 5, 'shop'], [4, 5, 'kneipe'], [10, 5, 'counterfeit'], [16, 5, 'casino'], [24, 5, 'bank'], [30, 5, 'loanshark'],
-  [1, 10, 'harbor'], [4, 10, 'shop'], [10, 10, 'weapons'], [16, 10, 'pawnshop'], [24, 10, 'cars'], [30, 10, 'shop'],
-  [1, 15, 'subway'], [4, 15, 'kneipe'], [10, 15, 'station'], [16, 15, 'bank'], [24, 15, 'casino'], [30, 15, 'cars'],
-  [1, 21, 'shop'], [4, 21, 'hotel'], [10, 21, 'subway'], [16, 21, 'bank'], [24, 21, 'hotel'], [30, 21, 'villa'],
-  [1, 7, 'hotel'], [10, 7, 'shop'], [16, 7, 'kneipe'], [24, 7, 'weapons'], [30, 7, 'bank'],
-  [1, 18, 'cars'], [4, 18, 'loanshark'], [10, 18, 'shop'], [16, 18, 'subway'], [24, 18, 'station'], [30, 18, 'casino'],
-  [4, 12, 'hotel'], [16, 12, 'kneipe'], [30, 12, 'shop'],
+const cityLayout = [
+  '################################',
+  '#..VV..RR....SSS...PPPP..NNN...#',
+  '#..VV..RR....SSS...PPPP..NNN...#',
+  '#......RR......................#',
+  '#..KK..RR..EEE..RR..BBB..LL....#',
+  '#..KK..RR..EEE..RR..BBB..LL....#',
+  '#......RR......RR..............#',
+  'RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR',
+  '#~~~~~..RR..MMM..RR..WWW..XX...#',
+  '#~~~~~..RR..MMM..RR..WWW..XX...#',
+  '#~~~~~...........RR............#',
+  '#~~~~~..SSS..RR..CCC..RR..AAA..#',
+  '#~~~~~..SSS..RR..CCC..RR..AAA..#',
+  'RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR',
+  '#..UU..RR..ZZZZ..RR..BBB..HH...#',
+  '#..UU..RR..ZZZZ..RR..BBB..HH...#',
+  '#......RR..====..RR............#',
+  '#..KK..RR..SSS...RR..CCC..AA...#',
+  '#..KK..RR..SSS...RR..CCC..AA...#',
+  'RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR',
+  '#..HH..RR..BBB...RR..TTTTTT....#',
+  '#..HH..RR..BBB...RR..TYYYTT....#',
+  '#......RR........RR...YYYTT....#',
+  '################################',
+] as const;
+
+const buildingChars: Partial<Record<string, BuildingType>> = {
+  V: 'hideout',
+  S: 'shop',
+  P: 'police',
+  N: 'hospital',
+  K: 'kneipe',
+  E: 'counterfeit',
+  B: 'bank',
+  L: 'loanshark',
+  M: 'harbor',
+  W: 'weapons',
+  X: 'pawnshop',
+  C: 'casino',
+  A: 'cars',
+  U: 'subway',
+  Z: 'station',
+  H: 'hotel',
+  Y: 'villa',
+};
+
+const buildingLabels: Array<{ x: number; y: number; building: BuildingType }> = [
+  { x: 3, y: 1, building: 'hideout' },
+  { x: 13, y: 1, building: 'shop' },
+  { x: 19, y: 1, building: 'police' },
+  { x: 27, y: 1, building: 'hospital' },
+  { x: 3, y: 4, building: 'kneipe' },
+  { x: 12, y: 4, building: 'counterfeit' },
+  { x: 22, y: 4, building: 'bank' },
+  { x: 27, y: 4, building: 'loanshark' },
+  { x: 12, y: 8, building: 'harbor' },
+  { x: 22, y: 8, building: 'weapons' },
+  { x: 27, y: 8, building: 'pawnshop' },
+  { x: 9, y: 11, building: 'shop' },
+  { x: 19, y: 11, building: 'casino' },
+  { x: 28, y: 11, building: 'cars' },
+  { x: 3, y: 14, building: 'subway' },
+  { x: 12, y: 14, building: 'station' },
+  { x: 22, y: 14, building: 'bank' },
+  { x: 27, y: 14, building: 'hotel' },
+  { x: 3, y: 17, building: 'kneipe' },
+  { x: 11, y: 17, building: 'shop' },
+  { x: 22, y: 17, building: 'casino' },
+  { x: 28, y: 17, building: 'cars' },
+  { x: 3, y: 20, building: 'hotel' },
+  { x: 11, y: 20, building: 'bank' },
+  { x: 22, y: 22, building: 'villa' },
 ];
 
 export function getWeapon(id: WeaponId): WeaponConfig {
@@ -865,78 +931,54 @@ function districtFor(x: number, y: number): District {
   return 'Altstadt';
 }
 
-function kindFor(x: number, y: number, district: District): TileKind {
-  if (isRoad(x, y)) return 'road';
-  const pattern = (x * 7 + y * 11) % 9;
-  if ((x === 0 || y === 0 || x === MAP_WIDTH - 1 || y === MAP_HEIGHT - 1) && pattern < 4) return 'wall';
-  if (district === 'Hafenviertel' && pattern < 5) return 'warehouse';
-  if (district === 'Villenviertel' && pattern < 3) return 'park';
-  if (district === 'Industriegebiet' && pattern < 4) return 'yard';
-  if (district === 'Rotlichtgasse' && pattern < 4) return 'lamp';
-  if (pattern < 3) return 'alley';
-  return pattern > 6 ? 'block' : 'street';
-}
-
-function isRoad(x: number, y: number): boolean {
-  return x === 1 || x === 4 || x === 10 || x === 16 || x === 24 || x === 30 || y === 1 || y === 5 || y === 10 || y === 15 || y === 21;
+function kindForLayoutChar(char: string): TileKind {
+  if (char === 'R') return 'road';
+  if (char === '.') return 'sidewalk';
+  if (char === '~') return 'water';
+  if (char === '=') return 'rails';
+  if (char === 'T') return 'park';
+  if (char === '#') return 'block';
+  return buildingChars[char] ? 'building' : 'decor';
 }
 
 export function createMap(): Tile[] {
   const tiles: Tile[] = [];
+  if (cityLayout.length !== MAP_HEIGHT || cityLayout.some((row) => row.length !== MAP_WIDTH)) {
+    console.warn('City layout dimensions do not match map size.');
+  }
   for (let y = 0; y < MAP_HEIGHT; y += 1) {
     for (let x = 0; x < MAP_WIDTH; x += 1) {
+      const char = cityLayout[y]?.[x] ?? '#';
       const district = districtFor(x, y);
-      const entrance = buildingPositions.find(([bx, by]) => bx === x && by === y);
-      const buildingVisual = buildingPositions.find(([bx, by]) => {
-        const tile = buildingTileFor(bx, by);
-        return tile.x === x && tile.y === y;
-      });
-      const buildingFootprint = buildingVisual ?? buildingFootprintForTile(x, y);
+      const building = buildingChars[char];
+      const label = buildingLabels.find((item) => item.x === x && item.y === y && item.building === building);
       tiles.push({
         id: `${x}-${y}`,
         x,
         y,
         district,
-        kind: entrance ? 'entrance' : buildingFootprint ? 'building' : kindFor(x, y, district),
-        entranceFor: entrance?.[2],
-        building: buildingFootprint?.[2],
-        buildingVisualFor: buildingVisual?.[2],
+        kind: kindForLayoutChar(char),
+        building,
+        buildingVisualFor: label?.building,
       });
     }
   }
   return tiles;
 }
 
-function buildingTileFor(x: number, y: number): { x: number; y: number } {
-  const candidates = [
-    { x: x + 1, y },
-    { x: x - 1, y },
-    { x, y: y + 1 },
-    { x, y: y - 1 },
-    { x: x + 2, y },
-    { x: x - 2, y },
-    { x, y: y + 2 },
-    { x, y: y - 2 },
-  ];
-  return candidates.find((candidate) => (
-    candidate.x >= 0 &&
-    candidate.x < MAP_WIDTH &&
-    candidate.y >= 0 &&
-    candidate.y < MAP_HEIGHT &&
-    !isRoad(candidate.x, candidate.y)
-  )) ?? { x: clamp(x + 1, 0, MAP_WIDTH - 1), y: clamp(y + 1, 0, MAP_HEIGHT - 1) };
+export function getAdjacentBuildingTile(position: { x: number; y: number }, map: Tile[]): Tile | undefined {
+  return map.find((tile) => (
+    tile.building &&
+    Math.abs(tile.x - position.x) + Math.abs(tile.y - position.y) === 1
+  ));
 }
 
-function buildingFootprintForTile(x: number, y: number): [number, number, BuildingType] | undefined {
-  if (isRoad(x, y)) return undefined;
-  return buildingPositions.find(([bx, by]) => {
-    const visual = buildingTileFor(bx, by);
-    const distance = Math.abs(visual.x - x) + Math.abs(visual.y - y);
-    return distance === 1 && !buildingPositions.some(([ex, ey]) => ex === x && ey === y);
-  });
+export function getCurrentBuilding(state: GameState): BuildingConfig | undefined {
+  const tile = getAdjacentBuildingTile(state.position, state.map);
+  return tile?.building ? getBuilding(tile.building) : undefined;
 }
 
-export function validateMapConnectivity(map: Tile[] = createMap(), start = { x: 1, y: 1 }): { valid: boolean; unreachable: Tile[] } {
+export function validateMapConnectivity(map: Tile[] = createMap(), start = { x: 3, y: 3 }): { valid: boolean; unreachable: Tile[] } {
   const queue = [start];
   const seen = new Set<string>([`${start.x}-${start.y}`]);
   while (queue.length) {
@@ -950,12 +992,19 @@ export function validateMapConnectivity(map: Tile[] = createMap(), start = { x: 
       queue.push({ x, y });
     }
   }
-  const unreachable = map.filter((tile) => tile.entranceFor && !seen.has(tile.id));
-  const buildingsWithoutEntrance = buildings.filter((building) => !map.some((tile) => tile.entranceFor === building.id));
-  if (unreachable.length || buildingsWithoutEntrance.length) {
-    console.warn('Map connectivity failed', { unreachable, buildingsWithoutEntrance });
+  const unreachable = map.filter((tile) => tile.buildingVisualFor && !adjacentWalkableSeen(tile, map, seen));
+  const buildingsWithoutReachableAdjacency = buildings.filter((building) => !map.some((tile) => tile.building === building.id && adjacentWalkableSeen(tile, map, seen)));
+  if (unreachable.length || buildingsWithoutReachableAdjacency.length) {
+    console.warn('Map connectivity failed', { unreachable, buildingsWithoutReachableAdjacency });
   }
   return { valid: unreachable.length === 0, unreachable };
+}
+
+function adjacentWalkableSeen(tile: Tile, map: Tile[], seen: Set<string>): boolean {
+  return [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
+    const neighbor = map.find((item) => item.x === tile.x + dx && item.y === tile.y + dy);
+    return Boolean(neighbor && isWalkable(neighbor) && seen.has(neighbor.id));
+  });
 }
 
 export function clamp(value: number, min: number, max: number): number {
@@ -1003,7 +1052,7 @@ export function checkRequirements(state: GameState, requirements: Requirement[])
 }
 
 function requirementHotelRoom(state: GameState): boolean {
-  return state.hotelRoom || state.position.x === 3 && state.position.y === 2;
+  return state.hotelRoom || getCurrentBuilding(state)?.id === 'hotel';
 }
 
 export function actionAvailability(state: GameState, action: ActionConfig): string[] {
@@ -1115,7 +1164,7 @@ export function newGame(
     gangName: gangName.trim() || DEFAULT_GANG_NAMES[0],
     month: 0,
     points: 0,
-    position: { x: 3, y: 2 },
+    position: { x: 3, y: 3 },
     stepsLeft: getCar(car).movementPoints,
     stats: {
       money: 700,
@@ -1189,6 +1238,11 @@ export function loadGame(): GameState | null {
     const base = newGame();
     const gang = normalizeGang(state.gang);
     const arsenal = normalizeArsenal(state.arsenal, gang, state.currentWeapon);
+    const map = createMap();
+    const loadedPosition = state.position ?? base.position;
+    const position = isWalkable(map.find((tile) => tile.x === loadedPosition.x && tile.y === loadedPosition.y) ?? map[0])
+      ? loadedPosition
+      : base.position;
     return {
       ...base,
       ...state,
@@ -1217,7 +1271,8 @@ export function loadGame(): GameState | null {
       protectionChallenge: undefined,
       policeCheckCooldownUntilMonth: state.policeCheckCooldownUntilMonth ?? 0,
       policeProtectionUntilMonth: state.policeProtectionUntilMonth ?? 0,
-      map: createMap(),
+      position,
+      map,
       result: undefined,
       policeCheck: undefined,
       combat: undefined,
@@ -1463,7 +1518,10 @@ export function buyTip(state: GameState, tipId: string): GameState {
   if (!tip) return withResult(state, 'Tipp verschwunden', ['Der Wirt kennt diesen Hinweis nicht mehr.']);
   const paid = spend(state, tip.cost);
   if (!paid) return withResult(addLog(state, `${tip.title} kostet ${formatMoney(tip.cost)}.`), 'Nicht möglich', [`${tip.title} kostet ${formatMoney(tip.cost)}.`]);
-  const active: ActiveTip = { ...tip, expiresMonth: state.month + tip.expiresInMonths };
+  const currentDistrict = state.map.find((tile) => tile.x === state.position.x && tile.y === state.position.y)?.district;
+  const distant = Boolean(tip.locationDistrict && currentDistrict && tip.locationDistrict !== currentDistrict);
+  const validMonths = Math.max(tip.expiresInMonths, tip.guaranteedCombat || distant ? 2 : 1);
+  const active: ActiveTip = { ...tip, expiresInMonths: validMonths, expiresMonth: state.month + validMonths };
   return withResult(addLog({
     ...paid,
     activeTips: [...paid.activeTips.filter((item) => item.id !== tip.id), active],
@@ -1473,7 +1531,8 @@ export function buyTip(state: GameState, tipId: string): GameState {
     tip.title,
     tip.text,
     tip.unlocksAction ? `Schaltet frei: ${getAction(tip.unlocksAction).name}.` : 'Verbessert Deine Optionen.',
-    `Gültig bis ${formatGameDate(active.expiresMonth)}.`,
+    distant || tip.distanceHint ? `${tip.distanceHint ?? 'Weiter Weg - bleibt länger heiß.'}` : 'Normaler Tipp: heute und den ganzen Folgemonat nutzbar.',
+    `Gültig bis einschließlich ${formatGameDate(active.expiresMonth)}.`,
   ]);
 }
 
@@ -1954,7 +2013,7 @@ export function processMonth(state: GameState): GameState {
     monthlyInjured: false,
     monthlyPointGain: 0,
     availableTips: [],
-    activeTips: state.activeTips.filter((tip) => tip.expiresMonth > state.month + 1),
+    activeTips: state.activeTips.filter((tip) => tip.expiresMonth >= state.month + 1),
     alcoholIncomeThisMonth: 0,
     creditBusiness: {
       ...state.creditBusiness,
@@ -2092,7 +2151,7 @@ export function movePlayer(state: GameState, dx: number, dy: number): GameState 
 }
 
 function isWalkable(tile: Tile): boolean {
-  return tile.kind === 'road' || tile.kind === 'entrance';
+  return tile.kind === 'road' || tile.kind === 'sidewalk';
 }
 
 function policeCheckRisk(state: GameState): number {

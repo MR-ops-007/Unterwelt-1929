@@ -34,6 +34,7 @@ import {
   formatMoney,
   formatGameDate,
   getAction,
+  getCurrentBuilding,
   getBuilding,
   getCar,
   getEffectiveStats,
@@ -133,7 +134,7 @@ function App() {
     () => game.map.find((tile) => tile.x === game.position.x && tile.y === game.position.y),
     [game.map, game.position.x, game.position.y],
   );
-  const currentBuilding = currentTile?.entranceFor ? getBuilding(currentTile.entranceFor) : undefined;
+  const currentBuilding = getCurrentBuilding(game);
   const effective = getEffectiveStats(game);
   const rank = getRank(game.points);
 
@@ -355,6 +356,7 @@ function App() {
   const askTip = (tipId: string) => {
     const tip = game.availableTips.find((item) => item.id === tipId);
     if (!tip) return;
+    const validThrough = tipValidThrough(game, tip);
     confirm({
       title: `${tip.title} kaufen?`,
       lines: [
@@ -363,7 +365,8 @@ function App() {
         tip.unlocksAction ? `Schaltet frei: ${getAction(tip.unlocksAction).name}` : 'Verbessert eine Gelegenheit.',
         tip.rewardModifier ? `Beutemodifikator: x${tip.rewardModifier.toFixed(2)}` : 'Kein Beutebonus.',
         tip.guaranteedCombat ? 'Kampf: garantiert' : 'Kampf: möglich je nach Aktion',
-        `Gültigkeit: ${tip.expiresInMonths} Monat(e)`,
+        tip.distanceHint ?? (tip.expiresInMonths > 1 ? 'Bleibt länger heiß.' : 'Heute und den ganzen Folgemonat nutzbar.'),
+        `Gültig bis einschließlich ${formatGameDate(validThrough)}.`,
       ],
       confirmLabel: game.stats.money < tip.cost ? 'Nicht möglich' : 'Tipp kaufen',
       onConfirm: (state) => game.stats.money < tip.cost ? state : buyTip(state, tipId),
@@ -640,14 +643,14 @@ function App() {
             <div className="mapPanel">
               <div className="cityGrid" style={{ gridTemplateColumns: `repeat(${MAP_WIDTH}, 1fr)` }}>
                 {game.map.map((tile) => {
-                  const building = tile.entranceFor ? getBuilding(tile.entranceFor) : tile.buildingVisualFor ? getBuilding(tile.buildingVisualFor) : undefined;
+                  const building = tile.building ? getBuilding(tile.building) : tile.buildingVisualFor ? getBuilding(tile.buildingVisualFor) : undefined;
                   const playerHere = tile.x === game.position.x && tile.y === game.position.y;
                   const visual = tileVisuals[tile.kind];
-                  const adjacentReachable = Math.abs(tile.x - game.position.x) + Math.abs(tile.y - game.position.y) === 1 && (tile.kind === 'road' || tile.kind === 'entrance');
+                  const adjacentReachable = Math.abs(tile.x - game.position.x) + Math.abs(tile.y - game.position.y) === 1 && (tile.kind === 'road' || tile.kind === 'sidewalk');
                   return (
                     <button
                       key={tile.id}
-                      className={`tile district-${districtClass(tile.district)} kind-${tile.kind} ${tile.building ? 'buildingFootprintTile' : ''} ${tile.buildingVisualFor ? 'buildingBlockTile' : ''} ${tile.entranceFor ? 'entranceTile' : ''} ${adjacentReachable ? 'reachableTile' : ''} ${playerHere ? 'playerTile' : ''}`}
+                      className={`tile district-${districtClass(tile.district)} kind-${tile.kind} ${tile.building ? 'buildingFootprintTile' : ''} ${tile.buildingVisualFor ? 'buildingBlockTile' : ''} ${adjacentReachable ? 'reachableTile' : ''} ${playerHere ? 'playerTile' : ''}`}
                       onClick={() => {
                         const distance = Math.abs(tile.x - game.position.x) + Math.abs(tile.y - game.position.y);
                         if (distance === 1) {
@@ -657,8 +660,8 @@ function App() {
                       }}
                       title={`${building?.name ?? visual.name} / ${tile.district}`}
                     >
-                      <span>{playerHere ? '@' : tile.entranceFor ? '▮' : tile.buildingVisualFor ? getBuilding(tile.buildingVisualFor).mapLabel : tile.building ? '▓' : tile.kind === 'road' ? '' : visual.icon}</span>
-                      <small>{tile.entranceFor ? 'TÜR' : ''}</small>
+                      <span>{playerHere ? '@' : tile.buildingVisualFor ? getBuilding(tile.buildingVisualFor).mapLabel : tile.building ? '▓' : tile.kind === 'road' ? '' : visual.icon}</span>
+                      <small></small>
                     </button>
                   );
                 })}
@@ -839,6 +842,13 @@ function formatRequirements(requirements: Requirement[]): string {
   }).join(', ');
 }
 
+function tipValidThrough(game: GameState, tip: GameState['availableTips'][number]): number {
+  const currentDistrict = game.map.find((tile) => tile.x === game.position.x && tile.y === game.position.y)?.district;
+  const distant = Boolean(tip.locationDistrict && currentDistrict && tip.locationDistrict !== currentDistrict);
+  const validMonths = Math.max(tip.expiresInMonths, tip.guaranteedCombat || distant ? 2 : 1);
+  return game.month + validMonths;
+}
+
 function trainingExplanation(stat: 'strength' | 'intelligence' | 'brutality' | 'shooting' | 'driving'): string {
   if (stat === 'shooting') return 'Schießen: verbessert Trefferchance im Kampf.';
   if (stat === 'driving') return 'Fahren: verbessert Flucht, Fahrzeugjobs und Bank/Zug/Hafen-Abgänge.';
@@ -883,15 +893,37 @@ function combatFxClass(combat: GameState['combat'], x: number, y: number): strin
 
 function locationTitle(tile: GameState['map'][number] | undefined, map: GameState['map']): string {
   if (!tile) return 'Straße';
-  if (tile.entranceFor) return `Vor ${getBuilding(tile.entranceFor).name}`;
-  const adjacentEntrance = map.find((other) => (
-    other.entranceFor &&
+  const adjacentBuilding = map.find((other) => (
+    other.building &&
     Math.abs(other.x - tile.x) + Math.abs(other.y - tile.y) === 1
   ));
-  if (adjacentEntrance?.entranceFor) return `Vor ${getBuilding(adjacentEntrance.entranceFor).name}`;
+  if (adjacentBuilding?.building) return `Vor ${buildingDativeName(adjacentBuilding.building)}`;
   return tile.kind === 'road'
     ? `Straße im ${tile.district}`
     : `${tileVisuals[tile.kind].name} im ${tile.district}`;
+}
+
+function buildingDativeName(building: string): string {
+  const names: Record<string, string> = {
+    bank: 'der Bank',
+    counterfeit: 'Blüten-Ede',
+    weapons: 'dem Waffenhändler',
+    cars: 'dem Autohändler',
+    police: 'dem Polizeirevier',
+    hospital: 'dem Krankenhaus',
+    hotel: 'dem Hotel',
+    kneipe: 'der Kneipe',
+    hideout: 'dem Versteck',
+    harbor: 'dem Hafenlager',
+    station: 'dem Bahnhof',
+    villa: 'der Villa',
+    pawnshop: 'der Pfandleihe',
+    subway: 'der U-Bahn',
+    loanshark: 'dem Kredit-Hai',
+    shop: 'dem Laden',
+    casino: 'dem Casino',
+  };
+  return names[building] ?? getBuilding(building as Parameters<typeof getBuilding>[0]).name;
 }
 
 function MapLegend() {
@@ -953,6 +985,8 @@ function TipMarket({ game, askTip }: { game: GameState; askTip: (tipId: string) 
                   <li>{tip.unlocksAction ? `Schaltet frei: ${getAction(tip.unlocksAction).name}` : 'Verbessert eine Gelegenheit'}</li>
                   <li>{tip.rewardModifier ? `Beute x${tip.rewardModifier.toFixed(2)}` : 'Kein Beutebonus'}</li>
                   <li>{tip.guaranteedCombat ? 'Kampf garantiert' : 'Kampf möglich'}</li>
+                  <li>{tip.distanceHint ?? 'Gilt bis einschließlich Folgemonat'}</li>
+                  <li>Bis einschließlich {formatGameDate(tipValidThrough(game, tip))}</li>
                 </ul>
                 <button disabled={game.stats.money < tip.cost} onClick={() => askTip(tip.id)}>{game.stats.money < tip.cost ? 'Zu teuer' : 'Kaufen'}</button>
               </article>
@@ -966,7 +1000,7 @@ function TipMarket({ game, askTip }: { game: GameState; askTip: (tipId: string) 
             <article className="inventoryRow" key={tip.id}>
               <span>{tip.title}</span>
               <span>{tip.unlocksAction ? getAction(tip.unlocksAction).name : 'Tipp'}</span>
-              <span>bis {formatGameDate(tip.expiresMonth)}</span>
+              <span>bis einschließlich {formatGameDate(tip.expiresMonth)}</span>
             </article>
           ))}
         </div>
