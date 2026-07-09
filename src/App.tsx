@@ -11,6 +11,7 @@ import {
   activeGang,
   buildings,
   buyCar,
+  buyTip,
   buyWeapon,
   cars,
   actionAvailability,
@@ -40,6 +41,7 @@ import {
   getPlayerWeapon,
   getWeapon,
   getRank,
+  isActionVisible,
   healMember,
   hireRecruit,
   loadGame,
@@ -59,6 +61,7 @@ import {
   trainMember,
   trainPlayer,
   weapons,
+  alcoholCapacity,
   MAP_WIDTH,
   MONTHLY_POINT_CAP,
   SAVE_KEY,
@@ -119,10 +122,11 @@ function App() {
   const [startingStats, setStartingStats] = useState(() => rollStartingStats());
   const [playerName, setPlayerName] = useState(DEFAULT_PLAYER_NAME);
   const [gangName, setGangName] = useState(() => DEFAULT_GANG_NAMES[Math.floor(Math.random() * DEFAULT_GANG_NAMES.length)]);
-  const [recruitSearch, setRecruitSearch] = useState<string | null>(null);
+  const [recruitSearch, setRecruitSearch] = useState<string[] | null>(null);
   const [recruitSearchStarted, setRecruitSearchStarted] = useState(0);
   const recruitTemplateRef = useRef<string | null>(null);
   const recruitTimerRef = useRef<number | null>(null);
+  const recruitLineTimerRef = useRef<number | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem(SOUND_KEY) === 'on');
   const [hasSave, setHasSave] = useState(() => Boolean(localStorage.getItem(SAVE_KEY)));
   const currentTile = useMemo(
@@ -302,23 +306,68 @@ function App() {
     const templateId = recruitTemplateRef.current;
     if (!templateId) return;
     if (recruitTimerRef.current != null) window.clearTimeout(recruitTimerRef.current);
+    if (recruitLineTimerRef.current != null) window.clearTimeout(recruitLineTimerRef.current);
     recruitTimerRef.current = null;
+    recruitLineTimerRef.current = null;
     recruitTemplateRef.current = null;
     setRecruitSearch(null);
     askRecruit(templateId);
   };
 
   const searchRecruit = (templateId: string) => {
-    const lines = [
+    const recruit = recruitTemplates.find((item) => item.templateId === templateId);
+    const openingLines = [
       'Du schaust Dich in der Kneipe um...',
       'Der Wirt nickt Dir kaum merklich zu...',
-      Math.random() < 0.5 ? 'Da scheint sich eine Dame für Dich zu interessieren...' : 'Ein finsterer Kerl beobachtet Dich aus der Ecke...',
     ];
+    const femaleRecruitLines = [
+      'Eine Dame im dunklen Mantel mustert Dich über den Glasrand.',
+      'Sie lächelt nicht. Das ist wahrscheinlich ein gutes Zeichen.',
+      'Ihre Hand liegt ruhig neben der Tasche. Zu ruhig.',
+    ];
+    const maleRecruitLines = [
+      'Ein finsterer Kerl löst sich aus dem Schatten.',
+      'Seine Knöchel sehen aus wie schlechte Nachrichten.',
+      'Er fragt nicht, was der Job ist. Nur, was er bringt.',
+    ];
+    const badLuckLines = [
+      'Heute sucht hier niemand einen neuen Chef.',
+      'Der Wirt zuckt nur mit den Schultern.',
+      'Du hast das Gefühl, dass Du zu laut gefragt hast.',
+    ];
+    const flavor = Math.random() < 0.08 ? badLuckLines : recruit?.sex === 'weiblich' ? femaleRecruitLines : maleRecruitLines;
+    const sequence = [...openingLines, ...flavor];
+    let index = 1;
     recruitTemplateRef.current = templateId;
     setRecruitSearchStarted(Date.now());
-    setRecruitSearch(lines.join('\n'));
+    setRecruitSearch([sequence[0]]);
     if (recruitTimerRef.current != null) window.clearTimeout(recruitTimerRef.current);
+    if (recruitLineTimerRef.current != null) window.clearTimeout(recruitLineTimerRef.current);
+    const showNext = () => {
+      index += 1;
+      setRecruitSearch(sequence.slice(0, index));
+      if (index < sequence.length) recruitLineTimerRef.current = window.setTimeout(showNext, 700);
+    };
+    recruitLineTimerRef.current = window.setTimeout(showNext, 700);
     recruitTimerRef.current = window.setTimeout(finishRecruitSearch, 4000);
+  };
+
+  const askTip = (tipId: string) => {
+    const tip = game.availableTips.find((item) => item.id === tipId);
+    if (!tip) return;
+    confirm({
+      title: `${tip.title} kaufen?`,
+      lines: [
+        `Preis: ${formatMoney(tip.cost)}`,
+        tip.text,
+        tip.unlocksAction ? `Schaltet frei: ${getAction(tip.unlocksAction).name}` : 'Verbessert eine Gelegenheit.',
+        tip.rewardModifier ? `Beutemodifikator: x${tip.rewardModifier.toFixed(2)}` : 'Kein Beutebonus.',
+        tip.guaranteedCombat ? 'Kampf: garantiert' : 'Kampf: möglich je nach Aktion',
+        `Gültigkeit: ${tip.expiresInMonths} Monat(e)`,
+      ],
+      confirmLabel: game.stats.money < tip.cost ? 'Nicht möglich' : 'Tipp kaufen',
+      onConfirm: (state) => game.stats.money < tip.cost ? state : buyTip(state, tipId),
+    });
   };
 
   const askTrainPlayer = (stat: 'strength' | 'intelligence' | 'brutality') => {
@@ -555,7 +604,7 @@ function App() {
     );
   }
 
-  const buildingActions = currentBuilding ? actions.filter((action) => currentBuilding.actions.includes(action.id)) : [];
+  const buildingActions = currentBuilding ? actions.filter((action) => currentBuilding.actions.includes(action.id) && isActionVisible(game, action)) : [];
 
   return (
     <main className="shell">
@@ -633,6 +682,7 @@ function App() {
               <h2>{locationTitle(currentTile, game.map)}</h2>
               <p>{currentBuilding?.description ?? 'Gassen, Mauern, Laternen. Nicht jeder Ort ist ein Geschäft, aber jeder Ort erzählt etwas.'}</p>
               <ActionList actions={buildingActions} game={game} askAction={askAction} />
+              {currentBuilding?.id === 'kneipe' && <TipMarket game={game} askTip={askTip} />}
               {currentBuilding?.id === 'weapons' && <WeaponShop game={game} askWeapon={askWeapon} askSellWeapon={askSellWeapon} askTrainPlayer={askTrainPlayer} />}
               {currentBuilding?.id === 'cars' && <CarShop game={game} askCar={askCar} />}
               {currentBuilding?.id === 'kneipe' && <RecruitList game={game} askRecruit={searchRecruit} premium={game.hotelRoom} />}
@@ -651,6 +701,9 @@ function App() {
                 <dt>Rangpunkte</dt><dd title="Rangpunkte bestimmen Deinen langfristigen Rang.">{game.points}{rank.next ? ` / ${rank.next.points}` : ''}</dd>
                 <dt>Monatsruhm</dt><dd>{game.monthlyPointGain}/{MONTHLY_POINT_CAP}</dd>
                 <dt>Blütenrisiko</dt><dd>{game.stats.counterfeit}/10</dd>
+                <dt>Alkohol</dt><dd>{game.alcoholBarrels}/{alcoholCapacity(game)} Fässer</dd>
+                <dt>Kreditbuch</dt><dd>{game.creditBusiness.owned ? `${formatMoney(game.creditBusiness.invested)} / Hitze ${game.creditBusiness.heat}` : 'Nein'}</dd>
+                <dt>Aktive Tipps</dt><dd>{game.activeTips.length ? game.activeTips.map((tip) => tip.title).join(', ') : 'Keine'}</dd>
                 <dt>Gesundheit</dt><dd>{game.stats.health}</dd>
                 <dt>Stärke</dt><dd>{game.stats.strength}</dd>
                 <dt>Intelligenz</dt><dd>{game.stats.intelligence}</dd>
@@ -698,7 +751,7 @@ function App() {
           <section className="modal" role="dialog" aria-modal="true" onClick={() => Date.now() - recruitSearchStarted > 1000 && finishRecruitSearch()}>
             <h2>Kneipe</h2>
             <div className="modalLines">
-              {recruitSearch.split('\n').map((line) => <p key={line}>{line}</p>)}
+              {recruitSearch.map((line) => <p key={line}>{line}</p>)}
               <p>Nach einer Sekunde: klicken oder Leertaste zum Überspringen.</p>
             </div>
           </section>
@@ -880,6 +933,45 @@ function ActionList({ actions: list, game, askAction }: { actions: ActionConfig[
         );
       })}
     </div>
+  );
+}
+
+function TipMarket({ game, askTip }: { game: GameState; askTip: (tipId: string) => void }) {
+  if (!game.availableTips.length && !game.activeTips.length) return null;
+  return (
+    <>
+      {game.availableTips.length > 0 && (
+        <>
+          <h3>Kneipentipps</h3>
+          <div className="cardGrid">
+            {game.availableTips.map((tip) => (
+              <article className="choiceCard" key={tip.id}>
+                <h3>{tip.title}</h3>
+                <p>{tip.text}</p>
+                <ul>
+                  <li>Preis {formatMoney(tip.cost)}</li>
+                  <li>{tip.unlocksAction ? `Schaltet frei: ${getAction(tip.unlocksAction).name}` : 'Verbessert eine Gelegenheit'}</li>
+                  <li>{tip.rewardModifier ? `Beute x${tip.rewardModifier.toFixed(2)}` : 'Kein Beutebonus'}</li>
+                  <li>{tip.guaranteedCombat ? 'Kampf garantiert' : 'Kampf möglich'}</li>
+                </ul>
+                <button disabled={game.stats.money < tip.cost} onClick={() => askTip(tip.id)}>{game.stats.money < tip.cost ? 'Zu teuer' : 'Kaufen'}</button>
+              </article>
+            ))}
+          </div>
+        </>
+      )}
+      {game.activeTips.length > 0 && (
+        <div className="inventoryList">
+          {game.activeTips.map((tip) => (
+            <article className="inventoryRow" key={tip.id}>
+              <span>{tip.title}</span>
+              <span>{tip.unlocksAction ? getAction(tip.unlocksAction).name : 'Tipp'}</span>
+              <span>bis {formatGameDate(tip.expiresMonth)}</span>
+            </article>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 

@@ -33,7 +33,7 @@ export type WeaponId = 'none' | 'colt1911' | 'savage1907' | 'remington11' | 'win
 export type CarId = 'foot' | 'talbot90' | 'chevyRoadster' | 'buickCentury' | 'auburn120' | 'citroenTa';
 export type Screen = 'menu' | 'game' | 'gang' | 'combat' | 'won' | 'lost';
 export type RankName = 'Anfänger' | 'Schläger' | 'Kleiner Fisch' | 'Langfinger' | 'Ganove' | 'Mafiosi' | 'Bullenschreck' | 'Meuchelmörder' | 'Gangsterboss' | 'Rechte Hand' | 'Der Pate';
-export type CombatScenarioId = 'police' | 'bank' | 'station' | 'harbor' | 'villa' | 'rival';
+export type CombatScenarioId = 'police' | 'bank' | 'station' | 'harbor' | 'villa' | 'rival' | 'alley';
 export type CombatTerrain = 'floor' | 'street' | 'desk' | 'counter' | 'crate' | 'wall' | 'platform';
 export type ProtectionStatus = 'protectedByPlayer' | 'protectedByRival';
 export type ActionId =
@@ -69,7 +69,15 @@ export type ActionId =
   | 'train-robbery'
   | 'loan-take'
   | 'loan-repay'
-  | 'steal-car';
+  | 'credit-start'
+  | 'credit-invest'
+  | 'debt-collection'
+  | 'steal-car'
+  | 'ask-tip'
+  | 'alcohol-buy'
+  | 'alcohol-sell'
+  | 'money-transport'
+  | 'mayor-hit';
 
 export interface Requirement {
   stat?: keyof Pick<PlayerStats, 'strength' | 'intelligence' | 'reputation' | 'brutality' | 'wanted'>;
@@ -190,8 +198,34 @@ export interface ActionConfig {
   stepCost?: number;
   pointEffect?: number;
   cooldownKey?: string;
+  tipOnly?: boolean;
   effect: string;
   failure: string;
+}
+
+export interface TipConfig {
+  id: string;
+  title: string;
+  text: string;
+  cost: number;
+  tier: 'early' | 'mid' | 'late';
+  requiredRank?: RankName;
+  requiredStats?: Requirement[];
+  unlocksAction?: ActionId;
+  expiresInMonths: number;
+  guaranteedCombat?: boolean;
+  scenario?: CombatScenarioId;
+  rewardModifier?: number;
+}
+
+export interface ActiveTip extends TipConfig {
+  expiresMonth: number;
+}
+
+export interface CreditBusiness {
+  owned: boolean;
+  invested: number;
+  heat: number;
 }
 
 export interface Tile {
@@ -283,7 +317,7 @@ export interface GameState {
   hotelRoom: boolean;
   gangFounded: boolean;
   arsenal: OwnedWeapon[];
-  monthly: Record<string, boolean>;
+  monthly: Record<string, boolean | number>;
   monthlyCrimeCount: number;
   monthlyMajorCrimeCount: number;
   monthlyQuietActions: number;
@@ -291,6 +325,11 @@ export interface GameState {
   monthlyPointGain: number;
   actionCooldowns: Record<string, number>;
   shopProtections: Record<string, ProtectionStatus>;
+  availableTips: TipConfig[];
+  activeTips: ActiveTip[];
+  alcoholBarrels: number;
+  alcoholIncomeThisMonth: number;
+  creditBusiness: CreditBusiness;
   protectionChallenge?: ProtectionChallenge;
   policeCheckCooldownUntilMonth?: number;
   policeProtectionUntilMonth?: number;
@@ -310,7 +349,7 @@ export const MAP_HEIGHT = 24;
 export const MAP_SIZE = MAP_WIDTH;
 export const COMBAT_WIDTH = 12;
 export const COMBAT_HEIGHT = 8;
-export const MONTHLY_POINT_CAP = 6;
+export const MONTHLY_POINT_CAP = 10;
 
 export const ranks: Array<{ name: RankName; points: number }> = [
   { name: 'Anfänger', points: 0 },
@@ -678,7 +717,7 @@ export const recruitTemplates: GangMemberTemplate[] = [
 
 export const buildings: BuildingConfig[] = [
   { id: 'hideout', name: 'Versteck', icon: 'V', short: 'V', mapLabel: 'VERST', category: 'Unterkunft', description: 'Kalter Ofen, falsche Papiere, ein Bett pro Freund.', district: 'Altstadt', actions: ['lay-low', 'found-gang', 'gang-war'] },
-  { id: 'kneipe', name: 'Kneipe', icon: 'K', short: 'K', mapLabel: 'KNEIPE', category: 'Unterkunft', description: 'Rauch, Korn und Menschen, die neue Chefs suchen.', district: 'Rotlichtgasse', actions: ['blackmail', 'gang-war'] },
+  { id: 'kneipe', name: 'Kneipe', icon: 'K', short: 'K', mapLabel: 'KNEIPE', category: 'Unterkunft', description: 'Rauch, Korn und Menschen, die neue Chefs suchen.', district: 'Rotlichtgasse', actions: ['ask-tip', 'alcohol-buy', 'alcohol-sell', 'blackmail', 'gang-war'] },
   { id: 'hotel', name: 'Hotel', icon: 'H', short: 'H', mapLabel: 'HOTEL', category: 'Unterkunft', description: 'Teure Zimmer, diskrete Türen, bessere Kontakte.', district: 'Villenviertel', actions: ['rent-room', 'found-gang'] },
   { id: 'weapons', name: 'Waffenhändler', icon: '†', short: 'WA', mapLabel: 'WAFF', category: 'Geschäfte', description: 'Der Keller riecht nach Öl und schlechten Entscheidungen.', district: 'Industriegebiet', actions: [] },
   { id: 'cars', name: 'Autohändler', icon: 'A', short: 'A', mapLabel: 'AUTO', category: 'Geschäfte', description: 'Frisierte Motoren und Rechnungen ohne Namen.', district: 'Bahnhofsviertel', actions: ['steal-car'] },
@@ -688,11 +727,11 @@ export const buildings: BuildingConfig[] = [
   { id: 'police', name: 'Polizeirevier', icon: 'P', short: 'PR', mapLabel: 'POL', category: 'Stadt', description: 'Aktenordner, Zellen, Namen an Tafeln.', district: 'Polizeibezirk', actions: ['police-chief-bribe', 'police-bribe'] },
   { id: 'hospital', name: 'Krankenhaus', icon: '+', short: '+', mapLabel: 'KH', category: 'Stadt', description: 'Saubere Laken für dreckiges Geld.', district: 'Polizeibezirk', actions: ['heal-player'] },
   { id: 'harbor', name: 'Hafenlager', icon: '▓', short: 'HL', mapLabel: 'HAFEN', category: 'Risiko', description: 'Kisten, Nebel, Wachhunde und verschwundene Fracht.', district: 'Hafenviertel', actions: ['harbor-heist'] },
-  { id: 'station', name: 'Bahnhof', icon: 'Z', short: 'Z', mapLabel: 'BHF', category: 'Stadt', description: 'Koffer, Fahrpläne und niemand schaut zweimal hin.', district: 'Bahnhofsviertel', actions: ['station-job', 'train-robbery'] },
-  { id: 'villa', name: 'Villa', icon: '♛', short: 'VI', mapLabel: 'VILLA', category: 'Risiko', description: 'Reiche Leute schlafen schlecht, wenn Du davon weißt.', district: 'Villenviertel', actions: ['villa-burglary'] },
+  { id: 'station', name: 'Bahnhof', icon: 'Z', short: 'Z', mapLabel: 'BHF', category: 'Stadt', description: 'Koffer, Fahrpläne und niemand schaut zweimal hin.', district: 'Bahnhofsviertel', actions: ['station-job', 'train-robbery', 'money-transport'] },
+  { id: 'villa', name: 'Villa', icon: '♛', short: 'VI', mapLabel: 'VILLA', category: 'Risiko', description: 'Reiche Leute schlafen schlecht, wenn Du davon weißt.', district: 'Villenviertel', actions: ['villa-burglary', 'mayor-hit'] },
   { id: 'pawnshop', name: 'Pfandleihe', icon: '¤', short: 'PF', mapLabel: 'PFAND', category: 'Geschäfte', description: 'Hier bekommt jedes Problem einen Preis.', district: 'Industriegebiet', actions: ['small-theft', 'pawn-sale'] },
   { id: 'subway', name: 'U-Bahn', icon: 'U', short: 'U', mapLabel: 'U', category: 'Stadt', description: 'Gedränge am Bahnsteig. Kleine Hände, kleine Scheine.', district: 'Bahnhofsviertel', actions: ['subway-pickpocket'] },
-  { id: 'loanshark', name: 'Kredit-Hai', icon: 'L', short: 'L', mapLabel: 'KREDIT', category: 'Geschäfte', description: 'Geld heute, Schmerzen morgen.', district: 'Rotlichtgasse', actions: ['loan-take', 'loan-repay'] },
+  { id: 'loanshark', name: 'Kredit-Hai', icon: 'L', short: 'L', mapLabel: 'KREDIT', category: 'Geschäfte', description: 'Geld heute, Schmerzen morgen.', district: 'Rotlichtgasse', actions: ['loan-take', 'loan-repay', 'credit-start', 'credit-invest', 'debt-collection'] },
   { id: 'shop', name: 'Laden', icon: 'S', short: 'S', mapLabel: 'SHOP', category: 'Geschäfte', description: 'Kasse, Besitzer, Schaufenster. Ein Anfang.', district: 'Altstadt', actions: ['beg', 'shop-robbery', 'blackmail'] },
 ];
 
@@ -702,7 +741,10 @@ export const actions: ActionConfig[] = [
   { id: 'small-theft', name: 'Kleinen Bruch drehen', building: 'pawnshop', cost: 0, reward: [120, 420], risk: 'niedrig', policeRisk: 1, reputationEffect: 1, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 1, cooldownKey: 'small-theft', effect: 'Schnelles Geld für den Anfang.', failure: 'Du verlierst Gesundheit oder bekommst Fahndungsdruck.' },
   { id: 'pawn-sale', name: 'Beute versetzen', building: 'pawnshop', cost: 0, reward: [80, 260], risk: 'niedrig', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'pawn-sale', effect: 'Kleiner sicherer Erlös.', failure: 'Der Pfandleiher drückt den Preis.' },
   { id: 'subway-pickpocket', name: 'Taschendiebstahl am Bahnsteig', building: 'subway', cost: 0, reward: [90, 350], risk: 'niedrig', policeRisk: 1, reputationEffect: 1, requirements: [], rank: 'Kleiner Fisch', stepCost: 1, pointEffect: 1, cooldownKey: 'subway', effect: 'Viele Taschen, wenig Licht.', failure: 'Ein Schaffner schaut zu genau hin.' },
-  { id: 'blackmail', name: 'Schutzgeld eintreiben', building: 'kneipe', cost: 0, reward: [320, 900], risk: 'mittel', policeRisk: 1, reputationEffect: 2, requirements: [], rank: 'Langfinger', stepCost: 2, pointEffect: 2, cooldownKey: 'blackmail', recommendedRoles: ['Schlaeger', 'Verhandler'], gangSlots: 1, effect: 'Brutalität und Verhandlungsgeschick zählen.', failure: 'Das Opfer rennt zur Polizei.' },
+  { id: 'blackmail', name: 'Schutzgeld eintreiben', building: 'kneipe', cost: 0, reward: [320, 900], risk: 'mittel', policeRisk: 1, reputationEffect: 2, requirements: [], rank: 'Langfinger', stepCost: 2, pointEffect: 1, cooldownKey: 'blackmail', recommendedRoles: ['Schlaeger', 'Verhandler'], gangSlots: 1, effect: 'Brutalität und Verhandlungsgeschick zählen.', failure: 'Das Opfer rennt zur Polizei.' },
+  { id: 'ask-tip', name: 'Nach Tipp fragen', building: 'kneipe', cost: 80, risk: 'niedrig', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'ask-tip', effect: 'Der Wirt kennt Namen, Wagen und falsche Uhrzeiten.', failure: 'Heute hört niemand etwas.' },
+  { id: 'alcohol-buy', name: 'Alkoholfässer kaufen', building: 'kneipe', cost: 100, risk: 'mittel', policeRisk: 1, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'alcohol-buy', effect: 'Schwarz gebrannter Stoff für die Route. Der Wagen bestimmt die Ladung.', failure: 'Der Lieferant sieht plötzlich Streifenwagen.' },
+  { id: 'alcohol-sell', name: 'Alkohol verkaufen', building: 'kneipe', cost: 0, reward: [150, 260], risk: 'mittel', policeRisk: 1, reputationEffect: 1, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 1, cooldownKey: 'alcohol-sell', effect: 'Fässer gegen Bargeld. Der erste gelungene Verkauf im Monat bringt Ruhm.', failure: 'Eine Flasche geht an den falschen Gast.' },
   { id: 'rent-room', name: 'Hotelzimmer mieten', building: 'hotel', cost: 900, risk: 'niedrig', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'rent-room', effect: 'Ein Zimmer als erste Adresse Deiner Bande. Rekrutierung und Bandenverwaltung werden freigeschaltet.', failure: 'Der Portier will echtes Geld.' },
   { id: 'found-gang', name: 'Bande organisieren', building: 'hideout', cost: 0, risk: 'niedrig', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'found-gang', effect: 'Bandenname, Treffpunkt und Regeln festlegen. Schaltet die Bandenverwaltung frei. Keine Punkte, keine Kosten.', failure: 'Niemand hört richtig zu.' },
   { id: 'bank-robbery', name: 'Bank überfallen', building: 'bank', cost: 250, reward: [5000, 25000], risk: 'sehr hoch', policeRisk: 3, reputationEffect: 5, requirements: [{ rank: 'Mafiosi' }, { activeGang: 1 }], rank: 'Mafiosi', stepCost: 3, pointEffect: 4, cooldownKey: 'bank-robbery', recommendedRoles: ['Safeknacker', 'Planer', 'Fahrerin'], gangSlots: 3, danger: 2, effect: 'Große Beute, großer Ruhm, große Akte.', failure: 'Verletzung, Verhaftung oder Geldverlust möglich.' },
@@ -718,7 +760,9 @@ export const actions: ActionConfig[] = [
   { id: 'harbor-heist', name: 'Hafenlager ausräumen', building: 'harbor', cost: 150, reward: [1800, 6200], risk: 'hoch', policeRisk: 2, reputationEffect: 3, requirements: [{ rank: 'Ganove' }, { activeGang: 2 }], rank: 'Ganove', stepCost: 2, pointEffect: 3, cooldownKey: 'harbor-heist', recommendedRoles: ['Fahrerin', 'Schlaeger'], gangSlots: 3, danger: 1, effect: 'Lieferwagen geben Bonus.', failure: 'Wachleute und Hafenpolizei machen Ärger.' },
   { id: 'station-job', name: 'Koffer am Bahnhof abfangen', building: 'station', cost: 80, reward: [700, 2100], risk: 'mittel', policeRisk: 1, reputationEffect: 1, requirements: [{ rank: 'Kleiner Fisch' }], rank: 'Kleiner Fisch', stepCost: 1, pointEffect: 1, cooldownKey: 'station-job', recommendedRoles: ['Informant', 'Fahrerin'], gangSlots: 1, effect: 'Schneller Coup mit guter Fluchtchance.', failure: 'Der falsche Koffer, der richtige Polizist.' },
   { id: 'train-robbery', name: 'Postzug ausnehmen', building: 'station', cost: 500, reward: [4500, 17000], risk: 'sehr hoch', policeRisk: 3, reputationEffect: 5, requirements: [{ rank: 'Bullenschreck' }, { activeGang: 2 }], rank: 'Bullenschreck', stepCost: 3, pointEffect: 5, cooldownKey: 'train-robbery', recommendedRoles: ['Fahrerin', 'Planer'], effect: 'Später Coup mit großem Echo.', failure: 'Der Zug fährt, Du bleibst.' },
+  { id: 'money-transport', name: 'Geldtransport abfangen', building: 'station', cost: 350, reward: [3200, 11000], risk: 'sehr hoch', policeRisk: 3, reputationEffect: 4, requirements: [{ rank: 'Ganove' }, { activeGang: 2 }], rank: 'Ganove', stepCost: 3, pointEffect: 4, cooldownKey: 'money-transport', recommendedRoles: ['Fahrerin', 'Schuetzin', 'Planer'], danger: 2, tipOnly: true, effect: 'Ein Tipp nennt Uhrzeit und Route. Ohne Kampf läuft hier nichts.', failure: 'Die Eskorte ist besser vorbereitet als Du.' },
   { id: 'villa-burglary', name: 'Villa ausräumen', building: 'villa', cost: 200, reward: [2200, 9000], risk: 'hoch', policeRisk: 2, reputationEffect: 3, requirements: [{ rank: 'Langfinger' }, { stat: 'intelligence', min: 45 }, { activeGang: 1 }], rank: 'Langfinger', stepCost: 2, pointEffect: 3, cooldownKey: 'villa-burglary', recommendedRoles: ['Safeknacker', 'Planer'], gangSlots: 2, danger: 1, effect: 'Intelligenz und Safeknacker glänzen.', failure: 'Alarmanlagen sind die Sprache der Reichen.' },
+  { id: 'mayor-hit', name: 'Bürgermeister-Auftrag', building: 'villa', cost: 800, reward: [2500, 7500], risk: 'sehr hoch', policeRisk: 4, reputationEffect: 8, requirements: [{ rank: 'Meuchelmörder' }, { activeGang: 2 }, { stat: 'brutality', min: 55 }], rank: 'Meuchelmörder', stepCost: 3, pointEffect: 5, cooldownKey: 'mayor-hit', recommendedRoles: ['Schuetzin', 'Fahrerin', 'Planer'], danger: 3, tipOnly: true, effect: 'Politischer Mord. Viel Ruf, viel Hitze, wenig Schlaf.', failure: 'Die Leibwächter reißen die Stadt aus dem Bett.' },
   { id: 'police-chief-bribe', name: 'Polizeichef bestechen', building: 'police', cost: 0, risk: 'mittel', policeRisk: -2, reputationEffect: 0, requirements: [{ rank: 'Kleiner Fisch' }], rank: 'Kleiner Fisch', stepCost: 1, pointEffect: 0, cooldownKey: 'police-chief-bribe', recommendedRoles: ['Verhandler'], effect: 'Kauft zeitweise Ruhe auf der Straße. Der Preis richtet sich nach Rang und Fahndung.', failure: 'Der Umschlag kommt beim falschen Schreibtisch an.' },
   { id: 'police-bribe', name: 'Akten schmieren', building: 'police', cost: 1800, risk: 'mittel', policeRisk: -2, reputationEffect: 0, requirements: [{ rank: 'Langfinger' }, { stat: 'intelligence', min: 35 }], rank: 'Langfinger', stepCost: 1, pointEffect: 0, cooldownKey: 'police-bribe', recommendedRoles: ['Verhandler'], effect: 'Fahndung sinkt, wenn die Umschläge dick genug sind.', failure: 'Ein ehrlicher Beamter ist teuer.' },
   { id: 'gang-war', name: 'Bandenkrieg anzetteln', building: 'kneipe', cost: 0, risk: 'sehr hoch', policeRisk: 2, reputationEffect: 5, requirements: [{ rank: 'Bullenschreck' }, { activeGang: 2 }], rank: 'Bullenschreck', stepCost: 2, pointEffect: 4, cooldownKey: 'gang-war', recommendedRoles: ['Schuetzin', 'Schlaeger'], danger: 2, effect: 'Startet einen taktischen Kampf gegen Rivalen.', failure: 'Die Straße frisst Schwäche.' },
@@ -729,7 +773,20 @@ export const actions: ActionConfig[] = [
   { id: 'counterfeit-contacts', name: 'Kontakte kaufen', building: 'counterfeit', cost: 2500, risk: 'mittel', policeRisk: 0, reputationEffect: 2, requirements: [{ rank: 'Langfinger' }], rank: 'Langfinger', stepCost: 1, pointEffect: 0, cooldownKey: 'counterfeit-contacts', effect: 'Straßenruf +2, bessere Geschäfte mit Ede.', failure: 'Kontakte reden erst, wenn Geld redet.' },
   { id: 'loan-take', name: 'Kredit aufnehmen', building: 'loanshark', cost: 0, reward: [1500, 1500], risk: 'mittel', policeRisk: 0, reputationEffect: 0, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'loan-take', effect: 'Schnelles Geld, später Schmerzen.', failure: 'Der Hai hält Dich für zu klein.' },
   { id: 'loan-repay', name: 'Kredit zurückzahlen', building: 'loanshark', cost: 2000, risk: 'niedrig', policeRisk: 0, reputationEffect: 1, requirements: [], rank: 'Anfänger', stepCost: 1, pointEffect: 0, cooldownKey: 'loan-repay', effect: 'Straßenruf steigt, Schulden verschwinden im Rauch.', failure: 'Ohne Geld bleibt der Hai hungrig.' },
+  { id: 'credit-start', name: 'Ins Kreditgeschäft einsteigen', building: 'loanshark', cost: 2500, risk: 'mittel', policeRisk: 1, reputationEffect: 1, requirements: [{ rank: 'Langfinger' }], rank: 'Langfinger', stepCost: 1, pointEffect: 0, cooldownKey: 'credit-start', effect: 'Du kaufst Dich in Zinsen, Schuldscheine und schlechte Ausreden ein.', failure: 'Die alten Haie lassen Dich nicht an den Tisch.' },
+  { id: 'credit-invest', name: 'Kapital ins Kreditgeschäft legen', building: 'loanshark', cost: 1000, risk: 'niedrig', policeRisk: 0, reputationEffect: 0, requirements: [{ rank: 'Langfinger' }], rank: 'Langfinger', stepCost: 1, pointEffect: 0, cooldownKey: 'credit-invest', effect: 'Mehr Kapital bringt monatliche Einnahmen, aber auch Hitze.', failure: 'Ohne Buch ist Geld nur Papier.' },
+  { id: 'debt-collection', name: 'Schulden eintreiben', building: 'loanshark', cost: 0, reward: [450, 1800], risk: 'hoch', policeRisk: 1, reputationEffect: 2, requirements: [{ rank: 'Langfinger' }, { activeGang: 1 }], rank: 'Langfinger', stepCost: 2, pointEffect: 2, cooldownKey: 'debt-collection', recommendedRoles: ['Schlaeger', 'Verhandler', 'Fahrerin'], danger: 1, effect: 'Manche Schuldner zahlen. Andere haben Freunde in der Gasse.', failure: 'Der Schuldner schreit lauter als geplant.' },
   { id: 'steal-car', name: 'Auto stehlen', building: 'cars', cost: 0, risk: 'hoch', policeRisk: 2, reputationEffect: 1, requirements: [{ rank: 'Langfinger' }], rank: 'Langfinger', stepCost: 2, pointEffect: 2, cooldownKey: 'steal-car', effect: 'Chance auf einen besseren Wagen ohne Kaufpreis.', failure: 'Ein Wachmann merkt sich Deine Schuhe.' },
+];
+
+export const tips: TipConfig[] = [
+  { id: 'tip-money-transport', title: 'Geldtransport am Bahnhof', text: 'Ein Fahrer trinkt zu viel und nennt Dir die Route eines Geldwagens.', cost: 350, tier: 'mid', requiredRank: 'Ganove', unlocksAction: 'money-transport', expiresInMonths: 1, guaranteedCombat: true, scenario: 'station', rewardModifier: 1.15 },
+  { id: 'tip-mayor-hit', title: 'Der Bürgermeister fährt privat', text: 'Ein Stadtrat sucht saubere Hände für eine dreckige Sache.', cost: 900, tier: 'late', requiredRank: 'Meuchelmörder', unlocksAction: 'mayor-hit', expiresInMonths: 1, guaranteedCombat: true, scenario: 'villa', rewardModifier: 1.05 },
+  { id: 'tip-bank-shift', title: 'Wachwechsel in der Bank', text: 'Der Nachtwächter wechselt um zehn vor zwölf die Zigarrenmarke.', cost: 420, tier: 'mid', requiredRank: 'Mafiosi', unlocksAction: 'bank-robbery', expiresInMonths: 1, scenario: 'bank', rewardModifier: 1.2 },
+  { id: 'tip-harbor-ledger', title: 'Frachtbuch am Hafen', text: 'Ein Kranführer weiß, welche Kisten nicht im Manifest stehen.', cost: 260, tier: 'early', requiredRank: 'Langfinger', unlocksAction: 'harbor-heist', expiresInMonths: 1, scenario: 'harbor', rewardModifier: 1.15 },
+  { id: 'tip-villa-servants', title: 'Dienerausgang der Villa', text: 'Ein Hausdiener verkauft Dir den Grundriss und eine Uhrzeit.', cost: 300, tier: 'early', requiredRank: 'Langfinger', unlocksAction: 'villa-burglary', expiresInMonths: 1, scenario: 'villa', rewardModifier: 1.15 },
+  { id: 'tip-train-mail', title: 'Postsack mit Wertpapieren', text: 'Am Freitag liegt im Postzug mehr Papier als Kohle.', cost: 700, tier: 'late', requiredRank: 'Bullenschreck', unlocksAction: 'train-robbery', expiresInMonths: 1, guaranteedCombat: true, scenario: 'station', rewardModifier: 1.25 },
+  { id: 'tip-alcohol-route', title: 'Durstige Hinterzimmer', text: 'Zwei Kneipen zahlen heute mehr fuer jeden Tropfen, der nicht versteuert wurde.', cost: 120, tier: 'early', unlocksAction: 'alcohol-sell', expiresInMonths: 1, rewardModifier: 1.35 },
 ];
 
 export const tileVisuals: Record<TileKind, { icon: string; name: string }> = {
@@ -951,10 +1008,17 @@ function requirementHotelRoom(state: GameState): boolean {
 
 export function actionAvailability(state: GameState, action: ActionConfig): string[] {
   const messages = checkRequirements(state, action.requirements);
+  if (action.tipOnly && !hasActiveTipForAction(state, action.id)) messages.push('Benötigt einen aktuellen Kneipen-Tipp.');
   if (action.rank && !rankMeets(getRank(state.points).name, action.rank)) messages.push(`Benötigt Rang: ${action.rank}`);
   if ((action.stepCost ?? 1) > state.stepsLeft) messages.push(`Benötigt ${action.stepCost ?? 1} Schritte`);
   const cost = actionCost(state, action);
   if (cost > state.stats.money) messages.push(`Benötigt ${formatMoney(cost)}`);
+  if (action.id === 'alcohol-buy' && state.alcoholBarrels >= alcoholCapacity(state)) messages.push('Deine Ladekapazität ist voll.');
+  if (action.id === 'alcohol-sell' && state.alcoholBarrels <= 0) messages.push('Du hast keine Fässer dabei.');
+  if (action.id === 'credit-start' && state.creditBusiness.owned) messages.push('Du bist bereits im Kreditgeschäft.');
+  if (action.id === 'credit-invest' && !state.creditBusiness.owned) messages.push('Du musst zuerst ins Kreditgeschäft einsteigen.');
+  if (action.id === 'credit-invest' && state.creditBusiness.invested >= 5000) messages.push('Dein aktuelles Kreditbuch ist voll.');
+  if (action.id === 'debt-collection' && !state.creditBusiness.owned) messages.push('Ohne Kreditbuch gibt es keine Schuldner.');
   const key = monthlyKey(state, action);
   if (action.cooldownKey && state.monthly?.[key]) {
     if (action.id === 'blackmail') messages.push('Der Ladenbesitzer hat diesen Monat schon bezahlt.');
@@ -971,12 +1035,39 @@ export function actionAvailability(state: GameState, action: ActionConfig): stri
   return [...new Set(messages)];
 }
 
+export function isActionVisible(state: GameState, action: ActionConfig): boolean {
+  if (!action.tipOnly) return true;
+  return hasActiveTipForAction(state, action.id);
+}
+
 export function actionCost(state: GameState, action: ActionConfig): number {
   if (action.id === 'police-chief-bribe') {
     const rankIndex = ranks.findIndex((rank) => rank.name === getRank(state.points).name);
     return 900 + rankIndex * 260 + state.stats.wanted * 420;
   }
+  if (action.id === 'alcohol-buy') return 100;
+  if (action.id === 'credit-invest') return Math.min(1000, Math.max(0, 5000 - state.creditBusiness.invested));
   return action.cost;
+}
+
+function hasActiveTipForAction(state: GameState, actionId: ActionId): boolean {
+  return state.activeTips.some((tip) => tip.unlocksAction === actionId && tip.expiresMonth >= state.month);
+}
+
+function tipForAction(state: GameState, actionId: ActionId): ActiveTip | undefined {
+  return state.activeTips.find((tip) => tip.unlocksAction === actionId && tip.expiresMonth >= state.month);
+}
+
+export function alcoholCapacity(state: GameState): number {
+  const capacities: Record<CarId, number> = {
+    foot: 1,
+    talbot90: 4,
+    chevyRoadster: 6,
+    buickCentury: 8,
+    auburn120: 10,
+    citroenTa: 5,
+  };
+  return capacities[state.car] ?? 1;
 }
 
 function monthlyKey(state: GameState, action: ActionConfig): string {
@@ -1051,6 +1142,11 @@ export function newGame(
     monthlyPointGain: 0,
     actionCooldowns: {},
     shopProtections: {},
+    availableTips: [],
+    activeTips: [],
+    alcoholBarrels: 0,
+    alcoholIncomeThisMonth: 0,
+    creditBusiness: { owned: false, invested: 0, heat: 0 },
     policeCheckCooldownUntilMonth: 0,
     policeProtectionUntilMonth: 0,
     map: createMap(),
@@ -1113,6 +1209,11 @@ export function loadGame(): GameState | null {
       monthlyPointGain: state.monthlyPointGain ?? 0,
       actionCooldowns: state.actionCooldowns ?? {},
       shopProtections: state.shopProtections ?? {},
+      availableTips: state.availableTips ?? [],
+      activeTips: (state.activeTips ?? []).filter((tip) => tip.expiresMonth >= (state.month ?? 0)),
+      alcoholBarrels: state.alcoholBarrels ?? 0,
+      alcoholIncomeThisMonth: state.alcoholIncomeThisMonth ?? 0,
+      creditBusiness: state.creditBusiness ?? { owned: false, invested: 0, heat: 0 },
       protectionChallenge: undefined,
       policeCheckCooldownUntilMonth: state.policeCheckCooldownUntilMonth ?? 0,
       policeProtectionUntilMonth: state.policeProtectionUntilMonth ?? 0,
@@ -1195,6 +1296,9 @@ function isHarmlessAction(action: ActionConfig): boolean {
     'counterfeit-contacts',
     'loan-take',
     'loan-repay',
+    'ask-tip',
+    'credit-start',
+    'credit-invest',
     'police-chief-bribe',
     'police-bribe',
   ].includes(action.id);
@@ -1214,6 +1318,9 @@ function isMajorCrime(action: ActionConfig): boolean {
     'gang-war',
     'casino-extort',
     'steal-car',
+    'money-transport',
+    'mayor-hit',
+    'debt-collection',
   ].includes(action.id);
 }
 
@@ -1227,23 +1334,38 @@ function markMonthlyActivity(state: GameState, action: ActionConfig, injured = f
   };
 }
 
-function awardRankPoints(state: GameState, requested: number): { state: GameState; gained: number; capped: boolean } {
-  const available = Math.max(0, MONTHLY_POINT_CAP - state.monthlyPointGain);
-  const gained = clamp(requested, 0, available);
+function rankPointGroupForAction(actionId: ActionId): string {
+  if (['bank-robbery', 'safe-crack'].includes(actionId)) return 'bank';
+  if (['train-robbery', 'money-transport', 'station-job'].includes(actionId)) return 'station';
+  if (['blackmail', 'shop-robbery'].includes(actionId)) return actionId;
+  if (['harbor-heist', 'villa-burglary', 'gang-war', 'mayor-hit', 'debt-collection', 'alcohol-sell'].includes(actionId)) return actionId;
+  return 'street';
+}
+
+function awardRankPoints(state: GameState, requested: number, group = 'street', bypassCap = false): { state: GameState; gained: number; capped: boolean } {
+  const repeatKey = `rankGroup:${group}`;
+  const repeats = Number(state.monthly?.[repeatKey] ?? 0);
+  const diminished = repeats === 0 ? requested : repeats === 1 ? Math.ceil(requested / 2) : 0;
+  const cap = bypassCap ? MONTHLY_POINT_CAP + 3 : MONTHLY_POINT_CAP;
+  const available = Math.max(0, cap - state.monthlyPointGain);
+  const gained = clamp(diminished, 0, bypassCap ? Math.max(0, cap - state.monthlyPointGain) : available);
   return {
     state: {
       ...state,
       points: clamp(state.points + gained, 0, 120),
       monthlyPointGain: state.monthlyPointGain + gained,
+      monthly: { ...state.monthly, [repeatKey]: repeats + 1 },
     },
     gained,
-    capped: requested > gained,
+    capped: diminished > gained || requested > diminished,
   };
 }
 
 function actionCooldownMonths(action: ActionConfig): number {
   if (action.id === 'bank-robbery' || action.id === 'safe-crack') return 3;
   if (action.id === 'train-robbery') return 6;
+  if (action.id === 'money-transport') return 4;
+  if (action.id === 'mayor-hit') return 8;
   if (action.id === 'villa-burglary') return 3;
   return 0;
 }
@@ -1261,21 +1383,21 @@ function withActionCooldown(state: GameState, action: ActionConfig): GameState {
 }
 
 function successfulWantedIncrease(action: ActionConfig, policeShift: number): number {
-  if (['beg', 'pawn-sale', 'casino-gamble', 'casino-roulette', 'casino-high-table', 'loan-take', 'loan-repay', 'rent-room', 'found-gang', 'heal-player', 'counterfeit-contacts', 'police-chief-bribe'].includes(action.id)) return 0;
+  if (['beg', 'pawn-sale', 'casino-gamble', 'casino-roulette', 'casino-high-table', 'loan-take', 'loan-repay', 'rent-room', 'found-gang', 'heal-player', 'counterfeit-contacts', 'police-chief-bribe', 'ask-tip', 'credit-start', 'credit-invest'].includes(action.id)) return 0;
   if (['small-theft', 'subway-pickpocket', 'station-job'].includes(action.id)) return 0;
   if (action.id === 'shop-robbery') return Math.random() < 0.35 ? 1 : 0;
-  if (['bank-robbery', 'safe-crack', 'harbor-heist', 'villa-burglary', 'train-robbery', 'casino-extort', 'steal-car'].includes(action.id)) return Math.max(1, policeShift);
+  if (['bank-robbery', 'safe-crack', 'harbor-heist', 'villa-burglary', 'train-robbery', 'casino-extort', 'steal-car', 'money-transport', 'mayor-hit', 'debt-collection'].includes(action.id)) return Math.max(1, policeShift);
   return Math.max(0, policeShift);
 }
 
 function failedWantedIncrease(action: ActionConfig): number {
-  if (['beg', 'pawn-sale', 'loan-take', 'loan-repay', 'casino-gamble', 'casino-roulette', 'casino-high-table', 'rent-room', 'found-gang'].includes(action.id)) return 0;
+  if (['beg', 'pawn-sale', 'loan-take', 'loan-repay', 'casino-gamble', 'casino-roulette', 'casino-high-table', 'rent-room', 'found-gang', 'ask-tip', 'credit-start', 'credit-invest'].includes(action.id)) return 0;
   if (action.policeRisk <= 0) return 0;
   return Math.max(1, action.policeRisk);
 }
 
 function failedDamage(action: ActionConfig): number {
-  if (['beg', 'pawn-sale', 'loan-take', 'loan-repay', 'casino-gamble', 'casino-roulette', 'casino-high-table', 'rent-room', 'found-gang'].includes(action.id)) return 0;
+  if (['beg', 'pawn-sale', 'loan-take', 'loan-repay', 'casino-gamble', 'casino-roulette', 'casino-high-table', 'rent-room', 'found-gang', 'ask-tip', 'credit-start', 'credit-invest'].includes(action.id)) return 0;
   return action.risk === 'sehr hoch' ? 30 : action.risk === 'hoch' ? 20 : 10;
 }
 
@@ -1294,10 +1416,13 @@ export function describeAction(state: GameState, action: ActionConfig): string[]
   const req = actionAvailability(state, action);
   const cost = actionCost(state, action);
   const capLeft = Math.max(0, MONTHLY_POINT_CAP - state.monthlyPointGain);
+  const activeTip = tipForAction(state, action.id);
   return [
     cost ? `Kosten: ${formatMoney(cost)}` : 'Kosten: keine',
     `Schrittkosten: ${action.stepCost ?? 1}`,
     action.reward ? `Mögliche Beute: ${formatMoney(action.reward[0])}-${formatMoney(action.reward[1])}` : action.effect,
+    activeTip?.rewardModifier ? `Aktiver Tipp: ${activeTip.title}, Beute x${activeTip.rewardModifier.toFixed(2)}` : '',
+    action.tipOnly ? 'Nur mit aktuellem Kneipen-Tipp sichtbar.' : '',
     `Risiko: ${action.risk}`,
     `Polizeirisiko: ${action.policeRisk >= 0 ? '+' : ''}${action.policeRisk}`,
     `Straßenruf bei Erfolg: ${action.reputationEffect >= 0 ? '+' : ''}${action.reputationEffect}`,
@@ -1310,6 +1435,46 @@ export function describeAction(state: GameState, action: ActionConfig): string[]
     `Erfolgschance grob: ${Math.round(successChance(state, action))}%`,
     req.length ? req.join(', ') : 'Anforderungen erfüllt',
   ].filter(Boolean);
+}
+
+function availableTipPool(state: GameState): TipConfig[] {
+  const rank = getRank(state.points).name;
+  const tierAllowed = (tip: TipConfig) => {
+    if (tip.tier === 'early') return true;
+    if (tip.tier === 'mid') return rankMeets(rank, 'Ganove');
+    return rankMeets(rank, 'Bullenschreck');
+  };
+  return tips.filter((tip) => {
+    if (!tierAllowed(tip)) return false;
+    if (tip.requiredRank && !rankMeets(rank, tip.requiredRank)) return false;
+    if (tip.requiredStats && checkRequirements(state, tip.requiredStats).length) return false;
+    if (state.activeTips.some((active) => active.id === tip.id && active.expiresMonth >= state.month)) return false;
+    return true;
+  });
+}
+
+function drawTips(state: GameState): TipConfig[] {
+  const pool = [...availableTipPool(state)].sort(() => Math.random() - 0.5);
+  return pool.slice(0, clamp(1 + Math.floor(Math.random() * 3), 1, Math.max(1, pool.length)));
+}
+
+export function buyTip(state: GameState, tipId: string): GameState {
+  const tip = state.availableTips.find((item) => item.id === tipId);
+  if (!tip) return withResult(state, 'Tipp verschwunden', ['Der Wirt kennt diesen Hinweis nicht mehr.']);
+  const paid = spend(state, tip.cost);
+  if (!paid) return withResult(addLog(state, `${tip.title} kostet ${formatMoney(tip.cost)}.`), 'Nicht möglich', [`${tip.title} kostet ${formatMoney(tip.cost)}.`]);
+  const active: ActiveTip = { ...tip, expiresMonth: state.month + tip.expiresInMonths };
+  return withResult(addLog({
+    ...paid,
+    activeTips: [...paid.activeTips.filter((item) => item.id !== tip.id), active],
+    availableTips: paid.availableTips.filter((item) => item.id !== tip.id),
+    monthlyQuietActions: paid.monthlyQuietActions + 1,
+  }, `Tipp gekauft: ${tip.title}.`), 'Tipp gekauft', [
+    tip.title,
+    tip.text,
+    tip.unlocksAction ? `Schaltet frei: ${getAction(tip.unlocksAction).name}.` : 'Verbessert Deine Optionen.',
+    `Gültig bis ${formatGameDate(active.expiresMonth)}.`,
+  ]);
 }
 
 export function buyWeapon(state: GameState, weaponId: WeaponId): GameState {
@@ -1505,9 +1670,98 @@ export function resolveAction(state: GameState, actionId: ActionId): ActionResul
   const policeShift = clamp(action.policeRisk + car.policeRiskModifier, -3, 4);
   next = withActionCooldown(next, action);
 
-  if (action.id === 'bank-robbery' || action.id === 'train-robbery') {
+  if (action.id === 'ask-tip') {
+    const offers = drawTips(next);
+    next = markMonthlyActivity({ ...next, availableTips: offers }, action);
+    return { state: withResult(addLog(next, 'Der Wirt wischt ein Glas sauber und nennt ein paar Möglichkeiten.'), 'Kneipengerüchte', offers.length ? [
+      'Der Wirt nickt kaum merklich.',
+      ...offers.map((tip) => `${tip.title}: ${formatMoney(tip.cost)}.`),
+      'Kaufe einen Tipp, solange er noch warm ist.',
+    ] : ['Heute weiß niemand etwas, das Dir nützt.']) };
+  }
+
+  if (action.id === 'alcohol-buy') {
+    const capacity = alcoholCapacity(next);
+    const room = Math.max(0, capacity - next.alcoholBarrels);
+    const bought = Math.min(room, 1);
+    next = markMonthlyActivity({
+      ...next,
+      alcoholBarrels: next.alcoholBarrels + bought,
+      stats: { ...next.stats, wanted: clamp(next.stats.wanted + (Math.random() < 0.12 ? 1 : 0), 0, 10) },
+    }, action);
+    return { state: withResult(addLog(next, bought ? 'Ein Fass verschwindet unter einer Decke.' : 'Der Wagen ist schon voll.'), bought ? 'Alkohol geladen' : 'Keine Kapazität', [
+      bought ? '1 Fass gekauft.' : 'Keine freie Ladekapazität.',
+      `Ladung: ${next.alcoholBarrels}/${capacity} Fässer.`,
+      getCar(next.car).name === 'Citroen t.a.' ? 'Der Citroen wirkt unauffälliger als er aussieht.' : 'Jede Flasche kann Fragen auslösen.',
+    ]) };
+  }
+
+  if (action.id === 'alcohol-sell') {
+    const tip = tipForAction(next, action.id);
+    const baseReward = 150 + Math.floor(Math.random() * 111);
+    const reward = Math.round(baseReward * (tip?.rewardModifier ?? 1));
+    const caught = Math.random() < clamp(0.1 + next.stats.wanted * 0.025 + (next.car === 'citroenTa' ? -0.05 : 0), 0.04, 0.45);
+    const pointRequest = next.monthly.alcoholSalePoints ? 0 : 1;
+    const points = !caught ? awardRankPoints(next, pointRequest, rankPointGroupForAction(action.id)) : undefined;
+    next = points?.state ?? next;
+    next = markMonthlyActivity({
+      ...next,
+      alcoholBarrels: caught ? 0 : Math.max(0, next.alcoholBarrels - 1),
+      alcoholIncomeThisMonth: caught ? next.alcoholIncomeThisMonth : next.alcoholIncomeThisMonth + reward,
+      monthly: { ...next.monthly, alcoholSalePoints: true },
+      stats: {
+        ...next.stats,
+        money: caught ? next.stats.money : next.stats.money + reward,
+        reputation: clamp(next.stats.reputation + (caught ? -1 : 1), 0, 99),
+        wanted: clamp(next.stats.wanted + (caught ? 2 : 0), 0, 10),
+      },
+    }, action, caught);
+    return { state: withResult(addLog(next, caught ? 'Die Alkoholroute fliegt auf. Die Fässer sind weg.' : `Ein Fass bringt ${formatMoney(reward)}.`), caught ? 'Route aufgeflogen' : 'Alkohol verkauft', caught ? [
+      'Die Polizei riecht den Stoff.',
+      'Alle Fässer verloren.',
+      'Fahndung +2.',
+    ] : [
+      `Erlös: ${formatMoney(reward)}.`,
+      `Fässer übrig: ${next.alcoholBarrels}/${alcoholCapacity(next)}.`,
+      `Rangpunkte +${points?.gained ?? 0}.`,
+      tip ? `Tippbonus aktiv: ${tip.title}.` : 'Kein Tippbonus.',
+    ]) };
+  }
+
+  if (action.id === 'credit-start') {
+    next = markMonthlyActivity({
+      ...next,
+      creditBusiness: { owned: true, invested: 2500, heat: 1 },
+      stats: { ...next.stats, reputation: clamp(next.stats.reputation + 1, 0, 99) },
+    }, action);
+    return { state: withResult(addLog(next, 'Du kaufst ein kleines Kreditbuch.'), 'Kreditgeschäft eröffnet', ['Investiert: $2.500.', 'Monatliche Zinsen beginnen am Monatsende.', 'Hitze +1.']) };
+  }
+
+  if (action.id === 'credit-invest') {
+    const investment = actionCost(state, action);
+    next = markMonthlyActivity({
+      ...next,
+      creditBusiness: {
+        owned: true,
+        invested: clamp(next.creditBusiness.invested + investment, 0, 5000),
+        heat: clamp(next.creditBusiness.heat + 1, 0, 10),
+      },
+    }, action);
+    return { state: withResult(addLog(next, `${formatMoney(investment)} gehen ins Kreditbuch.`), 'Kapital angelegt', [`Kapital: ${formatMoney(next.creditBusiness.invested)} / $5.000.`, 'Monatliche Zinsen steigen.', 'Hitze +1.']) };
+  }
+
+  if (action.id === 'debt-collection') {
+    const fight = Math.random() < 0.45;
+    if (fight) {
+      next = markMonthlyActivity(addLog(next, 'Der Schuldner hat Freunde in der Gasse.'), action);
+      return { state: next, combat: makeCombat(next, 'rival', 'alley', 'debt-collection') };
+    }
+  }
+
+  if (action.id === 'bank-robbery' || action.id === 'train-robbery' || action.id === 'money-transport' || action.id === 'mayor-hit') {
     next = markMonthlyActivity(addLog(next, `${action.name}: Erst sprechen die Waffen.`), action);
-    return { state: next, combat: makeCombat(next, 'rival', action.id === 'bank-robbery' ? 'bank' : 'station', action.id) };
+    const scenario = action.id === 'bank-robbery' ? 'bank' : action.id === 'mayor-hit' ? 'villa' : 'station';
+    return { state: next, combat: makeCombat(next, 'rival', scenario, action.id) };
   }
 
   if (action.id === 'gang-war') {
@@ -1593,7 +1847,7 @@ export function resolveAction(state: GameState, actionId: ActionId): ActionResul
     const found = foundCar ? getCar(foundCar) : undefined;
     const current = getCar(next.car);
     const better = found ? found.movementPoints > current.movementPoints : false;
-    const points = success && better ? awardRankPoints(next, action.pointEffect ?? 0) : undefined;
+    const points = success && better ? awardRankPoints(next, action.pointEffect ?? 0, rankPointGroupForAction(action.id)) : undefined;
     next = points?.state ?? next;
     next = {
       ...next,
@@ -1608,9 +1862,11 @@ export function resolveAction(state: GameState, actionId: ActionId): ActionResul
   }
 
   if (success) {
-    const reward = action.reward ? action.reward[0] + Math.floor(Math.random() * (action.reward[1] - action.reward[0] + 1)) : 0;
+    const tip = tipForAction(next, action.id);
+    const baseReward = action.reward ? action.reward[0] + Math.floor(Math.random() * (action.reward[1] - action.reward[0] + 1)) : 0;
+    const reward = Math.round(baseReward * (tip?.rewardModifier ?? 1));
     const wantedIncrease = successfulWantedIncrease(action, policeShift);
-    const points = awardRankPoints(next, action.pointEffect ?? 0);
+    const points = awardRankPoints(next, action.pointEffect ?? 0, rankPointGroupForAction(action.id), Boolean(tip && action.tipOnly));
     next = points.state;
     next = {
       ...next,
@@ -1626,7 +1882,7 @@ export function resolveAction(state: GameState, actionId: ActionId): ActionResul
       },
     };
     next = markMonthlyActivity(next, action);
-    next = withResult(addLog(next, `${action.name} gelingt. Beute: ${formatMoney(reward)}.`), 'Erfolg', [`${action.name} gelingt.`, `Beute: ${formatMoney(reward)}.`, `Rangpunkte +${points.gained}.`, points.capped ? 'Mehr Ruhm holst Du diesen Monat nicht aus der Straße.' : `Monatslimit: ${next.monthlyPointGain}/${MONTHLY_POINT_CAP}.`, `Straßenruf ${action.reputationEffect >= 0 ? '+' : ''}${action.reputationEffect}.`, wantedIncrease ? `Fahndung +${wantedIncrease}.` : 'Keine zusätzliche Fahndung.']);
+    next = withResult(addLog(next, `${action.name} gelingt. Beute: ${formatMoney(reward)}.`), 'Erfolg', [`${action.name} gelingt.`, tip?.rewardModifier ? `Tippbonus: ${tip.title}.` : '', `Beute: ${formatMoney(reward)}.`, `Rangpunkte +${points.gained}.`, points.capped ? 'Die Straße staunt nicht zweimal über denselben Trick.' : `Monatsruhm: ${next.monthlyPointGain}/${MONTHLY_POINT_CAP}.`, `Straßenruf ${action.reputationEffect >= 0 ? '+' : ''}${action.reputationEffect}.`, wantedIncrease ? `Fahndung +${wantedIncrease}.` : 'Keine zusätzliche Fahndung.'].filter(Boolean));
   } else {
     const damage = failedDamage(action);
     const wantedIncrease = failedWantedIncrease(action);
@@ -1678,8 +1934,11 @@ export function processMonth(state: GameState): GameState {
   const upkeep = state.gang.filter((member) => member.status !== 'tot').reduce((sum, member) => sum + member.upkeep, 0);
   const informantIncome = activeGang(state.gang).filter((member) => member.role === 'Informant').length * 180;
   const protectedShops = Object.entries(state.shopProtections ?? {}).filter(([, status]) => status === 'protectedByPlayer');
-  const protectionIncome = protectedShops.length * 140;
-  const canPayUpkeep = state.stats.money + informantIncome + protectionIncome >= upkeep;
+  const protectionIncome = protectedShops.reduce((sum, [key]) => sum + 100 + ((key.length * 37 + state.month * 19) % 401), 0);
+  const creditRate = state.creditBusiness.owned ? 0.1 + Math.random() * 0.08 : 0;
+  const creditIncome = Math.floor(state.creditBusiness.invested * creditRate);
+  const passiveIncome = informantIncome + protectionIncome + creditIncome;
+  const canPayUpkeep = state.stats.money + passiveIncome >= upkeep;
   const calmMonth = state.monthlyCrimeCount === 0;
   const hardMonth = state.monthlyMajorCrimeCount > 0 || state.monthlyInjured;
   const healthRecovery = hardMonth ? 5 : 10;
@@ -1694,13 +1953,20 @@ export function processMonth(state: GameState): GameState {
     monthlyQuietActions: 0,
     monthlyInjured: false,
     monthlyPointGain: 0,
+    availableTips: [],
+    activeTips: state.activeTips.filter((tip) => tip.expiresMonth > state.month + 1),
+    alcoholIncomeThisMonth: 0,
+    creditBusiness: {
+      ...state.creditBusiness,
+      heat: clamp(state.creditBusiness.heat + (creditIncome > 0 ? 1 : -1), 0, 10),
+    },
     protectionChallenge: undefined,
     actionCooldowns: Object.fromEntries(Object.entries(state.actionCooldowns ?? {}).filter(([, until]) => until > state.month + 1)),
     stats: {
       ...state.stats,
-      money: Math.max(0, state.stats.money - upkeep + informantIncome + protectionIncome),
+      money: Math.max(0, state.stats.money - upkeep + passiveIncome),
       health: clamp(state.stats.health + healthRecovery, 0, 100),
-      wanted: clamp(state.stats.wanted - wantedDecay, 0, 10),
+      wanted: clamp(state.stats.wanted - wantedDecay + (state.creditBusiness.heat >= 5 && Math.random() < 0.25 ? 1 : 0), 0, 10),
     },
     gang: state.gang.map((member) => {
       const recovered = member.status === 'verletzt' && Math.random() < 0.35;
@@ -1717,13 +1983,16 @@ export function processMonth(state: GameState): GameState {
     `Unterhalt: ${formatMoney(upkeep)}.`,
     `Informanten: ${formatMoney(informantIncome)}.`,
     `laufendes Schutzgeld: ${formatMoney(protectionIncome)}.`,
+    `Kreditzinsen: ${formatMoney(creditIncome)}.`,
+    state.alcoholIncomeThisMonth ? `Alkoholroute diesen Monat: ${formatMoney(state.alcoholIncomeThisMonth)}.` : 'Alkoholroute: keine Verkäufe.',
+    `Netto: ${formatMoney(passiveIncome - upkeep)}.`,
     `Erholung: +${healthRecovery} Gesundheit.`,
     calmMonth ? `Ruhiger Monat: Fahndung -${wantedDecay}.` : `Monatsdruck: ${state.monthlyCrimeCount} Verbrechen, davon ${state.monthlyMajorCrimeCount} schwer.`,
   ];
   if (state.policeProtectionUntilMonth && state.policeProtectionUntilMonth > next.month) {
     events.push(`Polizeischutz aktiv bis ${formatGameDate(state.policeProtectionUntilMonth)}.`);
   }
-  next = addLog(next, `Monat endet. Unterhalt: ${formatMoney(upkeep)}. Informanten: ${formatMoney(informantIncome)}.`);
+  next = addLog(next, `Monat endet. Einnahmen: ${formatMoney(passiveIncome)}. Unterhalt: ${formatMoney(upkeep)}.`);
   if (!canPayUpkeep) {
     const beforeCount = next.gang.length;
     const betrayals = next.gang.filter((member) => member.status !== 'tot' && member.loyalty < 18 && Math.random() < 0.35).length;
@@ -1770,7 +2039,7 @@ export function processMonth(state: GameState): GameState {
   if (next.stats.health <= 0) next = { ...next, screen: 'lost', gameOverReason: 'Du bist Deinen Verletzungen erlegen.' };
   if (next.points >= 120 && next.stats.money >= 50000 && activeGang(next.gang).length >= 5) next = { ...next, screen: 'won', gameOverReason: 'Du bist Der Pate geworden.' };
   const currentRank = getRank(next.points).name;
-  const income = informantIncome + protectionIncome;
+  const income = passiveIncome;
   const weapon = getPlayerWeapon(next);
   return withResult(next, `Steckbrief ${formatGameDate(next.month)}`, [
     '[||||]',
@@ -1785,7 +2054,12 @@ export function processMonth(state: GameState): GameState {
     `Auto: ${getCar(next.car).name}`,
     `Bande: ${next.gangName} (${activeGang(next.gang).length}/${next.gang.length} aktiv)`,
     `Monatliche Einnahmen: ${formatMoney(income)}`,
+    `  Schutzgeld: ${formatMoney(protectionIncome)}`,
+    `  Kreditgeschäft: ${formatMoney(creditIncome)}`,
+    `  Informanten: ${formatMoney(informantIncome)}`,
+    state.alcoholIncomeThisMonth ? `Alkohol verkauft: ${formatMoney(state.alcoholIncomeThisMonth)}` : 'Alkohol verkauft: $0',
     `Monatlicher Unterhalt: ${formatMoney(upkeep)}`,
+    `Netto: ${formatMoney(income - upkeep)}`,
     ...events,
   ]);
 }
@@ -1839,7 +2113,9 @@ function rawPoliceCheckRisk(state: GameState): number {
   const passportRelief = state.stats.passport ? -0.002 : 0;
   const carRelief = getCar(state.car).policeRiskModifier * 0.001;
   const counterfeitPressure = state.stats.counterfeit * 0.0015;
-  return clamp(0.003 + state.stats.wanted * 0.0035 + state.stats.danger * 0.002 + rankPressure + counterfeitPressure + passportRelief + carRelief, 0, 0.04);
+  const alcoholPressure = state.alcoholBarrels * 0.002;
+  const creditPressure = state.creditBusiness.heat * 0.0008;
+  return clamp(0.003 + state.stats.wanted * 0.0035 + state.stats.danger * 0.002 + rankPressure + counterfeitPressure + alcoholPressure + creditPressure + passportRelief + carRelief, 0, 0.04);
 }
 
 export function resolvePoliceCheck(state: GameState, option: 'flee' | 'bribe' | 'calm' | 'passport'): GameState {
@@ -2024,6 +2300,20 @@ const combatScenarios: Record<CombatScenarioId, CombatScenarioConfig> = {
     enemySpawns: rightSpawns(),
     enemyLabels: ['Rivale', 'Schläger', 'Schütze', 'Rivale', 'Messerkerl'],
   },
+  alley: {
+    id: 'alley',
+    title: 'Schlägerei in der Gasse',
+    terrain: [
+      ...terrainLine(0, 0, COMBAT_WIDTH - 1, 0, 'wall', '##'),
+      ...terrainLine(0, COMBAT_HEIGHT - 1, COMBAT_WIDTH - 1, COMBAT_HEIGHT - 1, 'wall', '##'),
+      { x: 4, y: 2, type: 'crate', icon: '[]', blocks: true },
+      { x: 5, y: 5, type: 'crate', icon: '[]', blocks: true },
+      { x: 8, y: 3, type: 'wall', icon: '##', blocks: true },
+    ],
+    allySpawns: leftSpawns(),
+    enemySpawns: rightSpawns(),
+    enemyLabels: ['Schuldner', 'Kumpan', 'Gassenkerl', 'Schläger', 'Rivale'],
+  },
 };
 
 function leftSpawns(): Array<{ x: number; y: number }> {
@@ -2206,10 +2496,12 @@ export function finishCombat(state: GameState, combat: CombatState): GameState {
   const aliveIds = new Set(combat.allies.map((ally) => ally.id));
   const playerSurvived = aliveIds.has('player');
   const action = combat.sourceActionId ? getAction(combat.sourceActionId) : undefined;
+  const tip = action ? tipForAction(state, action.id) : undefined;
   const rankPoints = won
-    ? awardRankPoints(state, action?.pointEffect ?? (combat.kind === 'police' ? 2 : 3))
+    ? awardRankPoints(state, action?.pointEffect ?? (combat.kind === 'police' ? 2 : 3), action ? rankPointGroupForAction(action.id) : combat.scenario, Boolean(tip && action?.tipOnly))
     : { state: { ...state, points: clamp(state.points - 4, 0, 120) }, gained: 0, capped: false };
-  const reward = won && action?.reward ? action.reward[0] + Math.floor(Math.random() * (action.reward[1] - action.reward[0] + 1)) : 0;
+  const baseReward = won && action?.reward ? action.reward[0] + Math.floor(Math.random() * (action.reward[1] - action.reward[0] + 1)) : 0;
+  const reward = Math.round(baseReward * (tip?.rewardModifier ?? 1));
   const sourceWanted = won && action ? Math.max(1, action.policeRisk) : 0;
   const sourceDanger = won && action ? action.danger ?? 1 : 0;
   let next: GameState = {
@@ -2235,7 +2527,7 @@ export function finishCombat(state: GameState, combat: CombatState): GameState {
       : state.shopProtections,
   };
   const wonLines = action
-    ? [`${action.name} gelingt nach dem Kampf.`, reward ? `Beute: ${formatMoney(reward)}.` : 'Die Straße gehört Dir.', `Rangpunkte +${rankPoints.gained}.`, rankPoints.capped ? 'Mehr Ruhm holst Du diesen Monat nicht aus der Straße.' : `Monatslimit: ${next.monthlyPointGain}/${MONTHLY_POINT_CAP}.`, `Straßenruf +${action.reputationEffect}.`, combat.sourceShopKey ? `${shopLabel(combat.sourceShopKey)} steht unter Deinem Schutz.` : `Fahndung +${sourceWanted}.`]
+    ? [`${action.name} gelingt nach dem Kampf.`, tip?.rewardModifier ? `Tippbonus: ${tip.title}.` : '', reward ? `Beute: ${formatMoney(reward)}.` : 'Die Straße gehört Dir.', `Rangpunkte +${rankPoints.gained}.`, rankPoints.capped ? 'Die Straße staunt nicht zweimal über denselben Trick.' : `Monatsruhm: ${next.monthlyPointGain}/${MONTHLY_POINT_CAP}.`, `Straßenruf +${action.reputationEffect}.`, combat.sourceShopKey ? `${shopLabel(combat.sourceShopKey)} steht unter Deinem Schutz.` : `Fahndung +${sourceWanted}.`].filter(Boolean)
     : ['Die Bande gewinnt.', `Rangpunkte +${rankPoints.gained}.`, rankPoints.capped ? 'Mehr Ruhm holst Du diesen Monat nicht aus der Straße.' : `Monatslimit: ${next.monthlyPointGain}/${MONTHLY_POINT_CAP}.`, 'Straßenruf steigt, Gefahr steigt.'];
   const lostLines = action
     ? [`${action.name} scheitert im Kugelhagel.`, 'Keine Beute.', 'Geld, Straßenruf und Rangpunkte verloren.', combat.kind === 'police' ? 'Einige Leute können verhaftet werden.' : 'Einige Leute sind verletzt.']
