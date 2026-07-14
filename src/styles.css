@@ -176,15 +176,22 @@ h3 {
   color: #ffd84c;
 }
 
+.topbar > div:first-child {
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
 .dashboard {
   display: grid;
-  grid-template-columns: minmax(720px, 1.35fr) minmax(360px, 0.8fr) minmax(260px, 0.55fr);
+  grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.78fr) minmax(220px, 0.55fr);
   gap: 1rem;
   margin-top: 1rem;
 }
 
 .mapPanel,
 .panel {
+  min-width: 0;
   border: 2px solid #8ee35f;
   background: rgba(10, 10, 30, 0.94);
   padding: 0.8rem;
@@ -296,15 +303,15 @@ h3 {
 .buildingBlockTile {
   border-color: #d7b56d;
   background: #8a674d;
-  overflow: visible;
+  overflow: hidden;
   z-index: 3;
 }
 
-.buildingBlockTile span {
+.buildingBlockTile > span:not(.pixelIcon) {
   position: absolute;
   inset: 50% auto auto 50%;
   transform: translate(-50%, -50%);
-  min-width: max-content;
+  max-width: 100%;
   padding: 0 0.12rem;
   background: #3a2b25;
   border: 1px solid rgba(255, 240, 165, 0.35);
@@ -313,6 +320,53 @@ h3 {
   letter-spacing: 0;
   white-space: nowrap;
   text-align: center;
+}
+
+.buildingBlockTile > .pixelIcon {
+  width: min(1.7rem, 92%);
+  height: min(1.7rem, 92%);
+  background: rgba(48, 34, 28, 0.78);
+  border: 1px solid rgba(243, 221, 176, 0.28);
+  color: inherit;
+  font-size: 0;
+  line-height: 0;
+  text-shadow: none;
+  white-space: normal;
+  box-shadow:
+    1px 1px 0 rgba(8, 8, 20, 0.75),
+    inset 0 0 0 1px rgba(255, 240, 165, 0.08);
+}
+
+.pixelIcon {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-template-rows: repeat(7, 1fr);
+  overflow: hidden;
+}
+
+.pixelIcon i {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.pixelFill {
+  background: #f3ddb0;
+  box-shadow: inset -1px -1px 0 rgba(16, 14, 18, 0.22);
+}
+
+.pixelAccent {
+  background: #d7b56d;
+  box-shadow: inset -1px -1px 0 rgba(16, 14, 18, 0.22);
+}
+
+.pixelRail {
+  background: #8f8a80;
+  box-shadow: inset -1px -1px 0 rgba(16, 14, 18, 0.18);
+}
+
+.pixelEmpty {
+  background: transparent;
 }
 
 .reachableTile {
@@ -440,10 +494,23 @@ h3 {
   font-size: 0.7rem;
 }
 
-.legendGroup span {
+.legendGroup > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.legendItem .pixelIcon {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
 }
 
 .bottomStatus {
@@ -519,9 +586,15 @@ h3 {
 
 .statsPanel dl {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0.35rem 0.8rem;
   margin: 0;
+  min-width: 0;
+}
+
+.statsPanel {
+  min-width: 0;
+  overflow: hidden;
 }
 
 .statHelp {
@@ -555,12 +628,20 @@ h3 {
 
 .statsPanel dt {
   color: #70a6ff;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .statsPanel dd {
+  min-width: 0;
   margin: 0;
+  overflow: hidden;
   color: #ffd84c;
   text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .lowerGrid,

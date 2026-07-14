@@ -5,15 +5,19 @@ import {
   BuildingConfig,
   CarId,
   GameState,
+  MapIconId,
   Requirement,
   WeaponId,
   actions,
+  actionRewardRange,
   activeGang,
+  availableCarsForLocation,
+  availableRecruitsForLocation,
+  availableWeaponsForLocation,
   buildings,
   buyCar,
   buyTip,
   buyWeapon,
-  cars,
   actionAvailability,
   actionCost,
   assignmentLabel,
@@ -35,12 +39,15 @@ import {
   formatGameDate,
   getAction,
   getCurrentBuilding,
+  getCurrentLocation,
   getBuilding,
   getCar,
   getEffectiveStats,
   getAssignedWeaponId,
+  getLocation,
   getPlayerWeapon,
   getWeapon,
+  locationSummary,
   getRank,
   isActionVisible,
   healMember,
@@ -61,7 +68,6 @@ import {
   tileVisuals,
   trainMember,
   trainPlayer,
-  weapons,
   alcoholCapacity,
   MAP_WIDTH,
   MONTHLY_POINT_CAP,
@@ -70,6 +76,162 @@ import {
 
 type Pending =
   { title: string; lines: string[]; danger?: string; confirmLabel?: string; onConfirm: (state: GameState) => GameState | ActionResult };
+
+const pixelIcons: Record<MapIconId, string[]> = {
+  bank: [
+    '...#...',
+    '..###..',
+    '.#####.',
+    '.#.#.#.',
+    '.#.#.#.',
+    '.#####.',
+    '.......',
+  ],
+  shop: [
+    '.#####.',
+    '#+#+#+#',
+    '#######',
+    '#..#..#',
+    '#..#..#',
+    '#######',
+    '.......',
+  ],
+  pub: [
+    '.####..',
+    '.#..#+.',
+    '.#..#+.',
+    '.####..',
+    '.####..',
+    '..##...',
+    '.......',
+  ],
+  loanShark: [
+    '..#....',
+    '.###...',
+    '#####..',
+    '..#....',
+    '.+++++.',
+    '.+###+.',
+    '.......',
+  ],
+  weapons: [
+    '.......',
+    '.#####.',
+    '###..#.',
+    '..####.',
+    '...##..',
+    '..##...',
+    '.......',
+  ],
+  carDealer: [
+    '.......',
+    '..###..',
+    '.#####.',
+    '#######',
+    '#.###.#',
+    '.#...#.',
+    '.......',
+  ],
+  counterfeit: [
+    '.#####.',
+    '.#.+.#.',
+    '.#.++#.',
+    '.#.+.#.',
+    '.#...#.',
+    '.#####.',
+    '.......',
+  ],
+  police: [
+    '...#...',
+    '.#.#.#.',
+    '..###..',
+    '#######',
+    '..###..',
+    '.#...#.',
+    '.......',
+  ],
+  hospital: [
+    '.......',
+    '...#...',
+    '...#...',
+    '.#####.',
+    '...#...',
+    '...#...',
+    '.......',
+  ],
+  station: [
+    '..###..',
+    '.#...#.',
+    '.#.#+#.',
+    '.#...#.',
+    '#######',
+    '.=.=.=.',
+    '.......',
+  ],
+  subway: [
+    '.......',
+    '.#...#.',
+    '.#...#.',
+    '.#...#.',
+    '.#...#.',
+    '..###..',
+    '.......',
+  ],
+  harbor: [
+    '..#....',
+    '..#....',
+    '.####..',
+    '..#.#..',
+    '..###..',
+    '.#####.',
+    '.......',
+  ],
+  villa: [
+    '...#...',
+    '..###..',
+    '.#####.',
+    '##...##',
+    '.#...#.',
+    '###+###',
+    '.......',
+  ],
+  hideout: [
+    '.......',
+    '.#####.',
+    '.#...#.',
+    '.#.#.#.',
+    '.#...#.',
+    '###.###',
+    '.......',
+  ],
+  hotel: [
+    '.#####.',
+    '.#.#.#.',
+    '.#####.',
+    '.#.#.#.',
+    '.#####.',
+    '.#...#.',
+    '.......',
+  ],
+  casino: [
+    '.......',
+    '..###..',
+    '.#+..#.',
+    '.#.+.#.',
+    '.#..+#.',
+    '..###..',
+    '.......',
+  ],
+  pawnshop: [
+    '..###..',
+    '.#...#.',
+    '.#####.',
+    '...#...',
+    '..###..',
+    '.#####.',
+    '.......',
+  ],
+};
 
 const statShort: Array<[string, string]> = [
   ['strength', 'ST'],
@@ -135,6 +297,7 @@ function App() {
     [game.map, game.position.x, game.position.y],
   );
   const currentBuilding = getCurrentBuilding(game);
+  const currentLocation = getCurrentLocation(game);
   const effective = getEffectiveStats(game);
   const rank = getRank(game.points);
 
@@ -226,6 +389,7 @@ function App() {
   const askWeapon = (weaponId: WeaponId) => {
     const weapon = getWeapon(weaponId);
     const blocked = checkRequirements(game, weapon.requiredStats);
+    const notSoldHere = currentBuilding?.id === 'weapons' && !availableWeaponsForLocation(game).some((item) => item.id === weaponId);
     const cannotAfford = game.stats.money < weapon.price;
     confirm({
       title: `${weapon.name} kaufen?`,
@@ -237,10 +401,10 @@ function App() {
         `Anforderungen: ${formatRequirements(weapon.requiredStats)}`,
         `Seltenheit: ${weapon.rarity}`,
         weapon.description,
-        blocked.length ? `Fehlt: ${blocked.join(', ')}` : cannotAfford ? 'Fehlt: zu wenig Geld' : 'Status: kaufbar',
+        notSoldHere ? 'Fehlt: wird hier nicht verkauft' : blocked.length ? `Fehlt: ${blocked.join(', ')}` : cannotAfford ? 'Fehlt: zu wenig Geld' : 'Status: kaufbar',
       ],
-      confirmLabel: blocked.length || cannotAfford ? 'Nicht möglich' : 'Kaufen',
-      onConfirm: (state) => blocked.length || cannotAfford ? state : buyWeapon(state, weaponId),
+      confirmLabel: notSoldHere || blocked.length || cannotAfford ? 'Nicht möglich' : 'Kaufen',
+      onConfirm: (state) => notSoldHere || blocked.length || cannotAfford ? state : buyWeapon(state, weaponId),
     });
   };
 
@@ -265,6 +429,7 @@ function App() {
     const car = getCar(carId);
     const blocked = checkRequirements(game, [{ stat: 'reputation', min: car.reputationRequirement }, ...car.requiredStats]);
     const owned = game.car === carId;
+    const notSoldHere = currentBuilding?.id === 'cars' && !availableCarsForLocation(game).some((item) => item.id === carId);
     confirm({
       title: `${car.name} kaufen?`,
       lines: [
@@ -274,10 +439,10 @@ function App() {
         `Polizeirisiko: ${car.policeRiskModifier}`,
         `Effekt: ${car.specialEffect}`,
         car.description,
-        owned ? 'Status: bereits aktiv' : blocked.length ? `Fehlt: ${blocked.join(', ')}` : `Danach: ${formatMoney(game.stats.money - car.price)}`,
+        notSoldHere ? 'Fehlt: steht hier nicht auf dem Hof' : owned ? 'Status: bereits aktiv' : blocked.length ? `Fehlt: ${blocked.join(', ')}` : `Danach: ${formatMoney(game.stats.money - car.price)}`,
       ],
-      confirmLabel: owned || blocked.length ? 'Nicht möglich' : 'Kaufen',
-      onConfirm: (state) => owned || blocked.length ? state : buyCar(state, carId),
+      confirmLabel: notSoldHere || owned || blocked.length ? 'Nicht möglich' : 'Kaufen',
+      onConfirm: (state) => notSoldHere || owned || blocked.length ? state : buyCar(state, carId),
     });
   };
 
@@ -286,6 +451,7 @@ function App() {
     if (!recruit) return;
     const blocked = checkRequirements(game, recruit.requirements);
     const hired = game.gang.some((member) => member.templateId === templateId && member.status !== 'tot');
+    const notFoundHere = !availableRecruitsForLocation(game).some((item) => item.templateId === templateId);
     confirm({
       title: `${recruit.nickname} aufnehmen?`,
       lines: [
@@ -296,10 +462,10 @@ function App() {
         `Spezial: ${recruit.special}`,
         `Schwäche: ${recruit.weakness}`,
         recruit.story,
-        hired ? 'Status: bereits in Deiner Bande' : blocked.length ? `Fehlt: ${blocked.join(', ')}` : 'Status: anwerbbar',
+        notFoundHere ? 'Status: hier nicht anzutreffen' : hired ? 'Status: bereits in Deiner Bande' : blocked.length ? `Fehlt: ${blocked.join(', ')}` : 'Status: anwerbbar',
       ],
-      confirmLabel: hired || blocked.length ? 'Nicht möglich' : 'Aufnehmen',
-      onConfirm: (state) => hired || blocked.length ? state : hireRecruit(state, templateId),
+      confirmLabel: notFoundHere || hired || blocked.length ? 'Nicht möglich' : 'Aufnehmen',
+      onConfirm: (state) => notFoundHere || hired || blocked.length ? state : hireRecruit(state, templateId),
     });
   };
 
@@ -608,6 +774,11 @@ function App() {
   }
 
   const buildingActions = currentBuilding ? actions.filter((action) => currentBuilding.actions.includes(action.id) && isActionVisible(game, action)) : [];
+  const activeGangCount = activeGang(game.gang).length;
+  const creditStatus = game.creditBusiness.owned ? `${formatMoney(game.creditBusiness.invested)} / H${game.creditBusiness.heat}` : '-';
+  const tipsStatus = game.activeTips.length ? `${game.activeTips.length} aktiv` : '0 aktiv';
+  const gangStatus = game.gang.length ? `${activeGangCount}/${game.gang.length}` : '-';
+  const weaponStatus = getPlayerWeapon(game).name;
 
   return (
     <main className="shell">
@@ -643,6 +814,7 @@ function App() {
             <div className="mapPanel">
               <div className="cityGrid" style={{ gridTemplateColumns: `repeat(${MAP_WIDTH}, 1fr)` }}>
                 {game.map.map((tile) => {
+                  const location = tile.locationId ? getLocation(tile.locationId) : undefined;
                   const building = tile.building ? getBuilding(tile.building) : tile.buildingVisualFor ? getBuilding(tile.buildingVisualFor) : undefined;
                   const playerHere = tile.x === game.position.x && tile.y === game.position.y;
                   const visual = tileVisuals[tile.kind];
@@ -658,9 +830,15 @@ function App() {
                           setGame(movePlayer(game, tile.x - game.position.x, tile.y - game.position.y));
                         }
                       }}
-                      title={`${building?.name ?? visual.name} / ${tile.district}`}
+                      title={`${location?.name ?? building?.name ?? visual.name} / ${tile.district}`}
                     >
-                      <span>{playerHere ? '@' : tile.buildingVisualFor ? tile.buildingLabel ?? getBuilding(tile.buildingVisualFor).mapLabel : tile.building ? '▓' : tile.kind === 'road' ? '' : visual.icon}</span>
+                      {playerHere ? (
+                        <span>@</span>
+                      ) : tile.buildingVisualFor ? (
+                        <PixelIcon icon={getBuilding(tile.buildingVisualFor).mapIcon} />
+                      ) : (
+                        <span>{tile.building ? '▓' : tile.kind === 'road' ? '' : visual.icon}</span>
+                      )}
                       <small></small>
                     </button>
                   );
@@ -682,14 +860,15 @@ function App() {
 
             <aside className="panel actionPanel">
               <p className="kicker">{currentTile?.district ?? 'Stadt'}</p>
-              <h2>{locationTitle(currentTile, game.map)}</h2>
-              <p>{currentBuilding?.description ?? 'Gassen, Mauern, Laternen. Nicht jeder Ort ist ein Geschäft, aber jeder Ort erzählt etwas.'}</p>
+              <h2>{currentLocation ? `Vor ${currentLocation.name}` : locationTitle(currentTile, game.map)}</h2>
+              <p>{currentLocation?.description ?? currentBuilding?.description ?? 'Gassen, Mauern, Laternen. Nicht jeder Ort ist ein Geschäft, aber jeder Ort erzählt etwas.'}</p>
+              {currentLocation && <p className="inlineHelp">{locationSummary(currentLocation)}</p>}
               <ActionList actions={buildingActions} game={game} askAction={askAction} />
               {currentBuilding?.id === 'kneipe' && <TipMarket game={game} askTip={askTip} />}
               {currentBuilding?.id === 'weapons' && <WeaponShop game={game} askWeapon={askWeapon} askSellWeapon={askSellWeapon} askTrainPlayer={askTrainPlayer} />}
               {currentBuilding?.id === 'cars' && <CarShop game={game} askCar={askCar} />}
-              {currentBuilding?.id === 'kneipe' && <RecruitList game={game} askRecruit={searchRecruit} premium={game.hotelRoom} />}
-              {currentBuilding?.id === 'hotel' && <RecruitList game={game} askRecruit={askRecruit} premium />}
+              {currentBuilding?.id === 'kneipe' && <RecruitList game={game} askRecruit={searchRecruit} />}
+              {currentBuilding?.id === 'hotel' && <RecruitList game={game} askRecruit={askRecruit} />}
             </aside>
 
             <aside className="panel statsPanel">
@@ -697,28 +876,29 @@ function App() {
               <p className="statHelp">Rangpunkte bestimmen Deinen Rang. Straßenruf beeinflusst Respekt, Preise und Erfolgschancen.</p>
               <dl>
                 <dt>Geld</dt><dd>{formatMoney(game.stats.money)}</dd>
-                <dt>Name</dt><dd>{game.playerName}</dd>
-                <dt>Bande</dt><dd>{game.gangName}</dd>
-                <dt>Monat</dt><dd>{formatGameDate(game.month)}</dd>
                 <dt>Rang</dt><dd>{rank.name}</dd>
                 <dt>Rangpunkte</dt><dd title="Rangpunkte bestimmen Deinen langfristigen Rang.">{game.points}{rank.next ? ` / ${rank.next.points}` : ''}</dd>
-                <dt>Monatsruhm</dt><dd>{game.monthlyPointGain}/{MONTHLY_POINT_CAP}</dd>
-                <dt>Blütenrisiko</dt><dd>{game.stats.counterfeit}/10</dd>
-                <dt>Alkohol</dt><dd>{game.alcoholBarrels}/{alcoholCapacity(game)} Fässer</dd>
-                <dt>Kreditbuch</dt><dd>{game.creditBusiness.owned ? `${formatMoney(game.creditBusiness.invested)} / Hitze ${game.creditBusiness.heat}` : 'Nein'}</dd>
-                <dt>Aktive Tipps</dt><dd>{game.activeTips.length ? game.activeTips.map((tip) => tip.title).join(', ') : 'Keine'}</dd>
+                <dt>Monat</dt><dd>{formatGameDate(game.month)}</dd>
+                <dt>Schritte</dt><dd>{game.stepsLeft}/{getCar(game.car).movementPoints}</dd>
+                <dt>Fahndung</dt><dd>{game.stats.wanted}</dd>
                 <dt>Gesundheit</dt><dd>{game.stats.health}</dd>
+                <dt>Straßenruf</dt><dd title="Straßenruf beeinflusst Respekt, Preise und Erfolgschancen.">{game.stats.reputation} / E{effective.reputation}</dd>
+                <dt>Auto</dt><dd title={getCar(game.car).name}>{getCar(game.car).name}</dd>
+                <dt>Waffe</dt><dd title={weaponStatus}>{weaponStatus}</dd>
+                <dt>Bande</dt><dd title={game.gangName}>{gangStatus}</dd>
+                <dt>Tipps</dt><dd>{tipsStatus}</dd>
+                <dt>Kredit</dt><dd>{creditStatus}</dd>
+                <dt>Alkohol</dt><dd>{game.alcoholBarrels}/{alcoholCapacity(game)}</dd>
+                <dt>Ruhm</dt><dd>{game.monthlyPointGain}/{MONTHLY_POINT_CAP}</dd>
+                <dt>Blüten</dt><dd>{game.stats.counterfeit}/10</dd>
                 <dt>Stärke</dt><dd>{game.stats.strength}</dd>
-                <dt>Intelligenz</dt><dd>{game.stats.intelligence}</dd>
-                <dt>Straßenruf</dt><dd title="Straßenruf beeinflusst Respekt, Preise und Erfolgschancen.">{game.stats.reputation} ({effective.reputation} effektiv)</dd>
-                <dt>Brutalität</dt><dd>{game.stats.brutality} ({effective.brutality} effektiv)</dd>
+                <dt>Int.</dt><dd>{game.stats.intelligence}</dd>
+                <dt>Brutalität</dt><dd>{game.stats.brutality} / E{effective.brutality}</dd>
                 <dt>Kampfwert</dt><dd title="Stärke + Brutalität + Waffen + Bande">{Math.round(effective.combat)}</dd>
                 <dt>Einschüchterung</dt><dd title="Brutalität + Straßenruf + passende Bande/Waffe">{Math.round(effective.intimidation)}</dd>
-                <dt>Fahndung</dt><dd>{game.stats.wanted}</dd>
                 <dt>Gefahr</dt><dd>{game.stats.danger}</dd>
                 <dt>Pass</dt><dd>{game.stats.passport ? 'Ja' : 'Nein'}</dd>
                 <dt>Hotelzimmer</dt><dd>{game.hotelRoom ? 'Ja' : 'Nein'}</dd>
-                <dt>Bande</dt><dd>{game.gangFounded ? 'Gegründet' : 'Nein'}</dd>
               </dl>
             </aside>
           </section>
@@ -934,11 +1114,24 @@ function MapLegend() {
         <div className="legendGroup" key={group}>
           <strong>{group}</strong>
           {buildings.filter((building) => building.category === group).map((building) => (
-            <span key={building.id}><b>{building.mapLabel}</b> {building.name}</span>
+            <span key={building.id} className="legendItem"><PixelIcon icon={building.mapIcon} small /> {building.name}</span>
           ))}
         </div>
       ))}
     </div>
+  );
+}
+
+function PixelIcon({ icon, small = false }: { icon: MapIconId; small?: boolean }) {
+  return (
+    <span className={`pixelIcon ${small ? 'smallPixelIcon' : ''}`} aria-hidden="true">
+      {pixelIcons[icon].flatMap((row, y) => row.split('').map((pixel, x) => (
+        <i
+          key={`${icon}-${x}-${y}`}
+          className={pixel === '#' ? 'pixelFill' : pixel === '+' ? 'pixelAccent' : pixel === '=' ? 'pixelRail' : 'pixelEmpty'}
+        />
+      )))}
+    </span>
   );
 }
 
@@ -949,13 +1142,14 @@ function ActionList({ actions: list, game, askAction }: { actions: ActionConfig[
       {list.map((action) => {
         const blocked = actionAvailability(game, action);
         const cost = actionCost(game, action);
+        const reward = actionRewardRange(game, action);
         return (
           <article className="choiceCard" key={action.id}>
             <h3>{action.name}</h3>
             <p>{action.effect}</p>
             <ul>
               <li>{cost ? `Kosten ${formatMoney(cost)}` : 'Keine Kosten'}, Schritte {action.stepCost ?? 1}</li>
-              <li>{action.reward ? `Beute ${formatMoney(action.reward[0])}-${formatMoney(action.reward[1])}` : `Effekt: ${action.effect}`}</li>
+              <li>{reward ? `Beute ${formatMoney(reward[0])}-${formatMoney(reward[1])}` : `Effekt: ${action.effect}`}</li>
               <li>Risiko {action.risk}, Polizei {action.policeRisk >= 0 ? '+' : ''}{action.policeRisk}</li>
               <li>Rang {action.rank ?? 'Anfänger'}, Rangpunkte +{Math.min(action.pointEffect ?? 0, Math.max(0, MONTHLY_POINT_CAP - game.monthlyPointGain))}</li>
               <li>{blocked.length ? blocked[0] : 'Anforderungen erfüllt'}</li>
@@ -1020,6 +1214,8 @@ function WeaponShop({
   askSellWeapon: (ownedWeaponId: string) => void;
   askTrainPlayer: (stat: 'strength' | 'intelligence' | 'brutality') => void;
 }) {
+  const location = getCurrentLocation(game);
+  const inventory = availableWeaponsForLocation(game).filter((weapon) => weapon.id !== 'none');
   return (
     <>
       <h3>Training</h3>
@@ -1030,8 +1226,9 @@ function WeaponShop({
         <button disabled={game.stepsLeft < 2} onClick={() => askTrainPlayer('intelligence')}>Intelligenz trainieren</button>
       </div>
       <h3>Kaufen</h3>
+      {location && <p className="inlineHelp">{location.shortName ? `${location.name} — ${location.shortName}` : locationSummary(location)}</p>}
       <div className="cardGrid">
-        {weapons.filter((weapon) => weapon.id !== 'none').map((weapon) => {
+        {inventory.map((weapon) => {
           const blocked = checkRequirements(game, weapon.requiredStats);
           const ownedCount = game.arsenal.filter((owned) => owned.weaponId === weapon.id).length;
           return (
@@ -1071,11 +1268,14 @@ function WeaponShop({
 }
 
 function CarShop({ game, askCar }: { game: GameState; askCar: (carId: CarId) => void }) {
+  const location = getCurrentLocation(game);
+  const inventory = availableCarsForLocation(game).filter((car) => car.id !== 'foot');
   return (
     <>
       <h3>Fuhrpark</h3>
+      {location && <p className="inlineHelp">{locationSummary(location)}</p>}
       <div className="cardGrid">
-        {cars.filter((car) => car.id !== 'foot').map((car) => {
+        {inventory.map((car) => {
           const blocked = checkRequirements(game, [{ stat: 'reputation', min: car.reputationRequirement }, ...car.requiredStats]);
           const owned = game.car === car.id;
           return (
@@ -1097,11 +1297,13 @@ function CarShop({ game, askCar }: { game: GameState; askCar: (carId: CarId) => 
   );
 }
 
-function RecruitList({ game, askRecruit, premium }: { game: GameState; askRecruit: (templateId: string) => void; premium: boolean }) {
-  const options = recruitTemplates.filter((recruit) => premium || recruit.cost <= 3500);
+function RecruitList({ game, askRecruit }: { game: GameState; askRecruit: (templateId: string) => void }) {
+  const location = getCurrentLocation(game);
+  const options = availableRecruitsForLocation(game);
   return (
     <>
-      <h3>{premium ? 'Diskrete Hotelkontakte' : 'Leute am Tresen'}</h3>
+      <h3>{location?.type === 'hotel' ? 'Diskrete Kontakte' : 'Leute am Tresen'}</h3>
+      {location && <p className="inlineHelp">{locationSummary(location)}</p>}
       <div className="cardGrid">
         {options.map((recruit) => {
           const blocked = checkRequirements(game, recruit.requirements);

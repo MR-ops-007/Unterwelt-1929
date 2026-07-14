@@ -36,6 +36,42 @@ export type RankName = 'Anfänger' | 'Schläger' | 'Kleiner Fisch' | 'Langfinger
 export type CombatScenarioId = 'police' | 'bank' | 'station' | 'harbor' | 'villa' | 'rival' | 'alley';
 export type CombatTerrain = 'floor' | 'street' | 'desk' | 'counter' | 'crate' | 'wall' | 'platform';
 export type ProtectionStatus = 'protectedByPlayer' | 'protectedByRival';
+export type MapIconId =
+  | 'bank'
+  | 'shop'
+  | 'pub'
+  | 'loanShark'
+  | 'weapons'
+  | 'carDealer'
+  | 'counterfeit'
+  | 'police'
+  | 'hospital'
+  | 'station'
+  | 'subway'
+  | 'harbor'
+  | 'villa'
+  | 'hideout'
+  | 'hotel'
+  | 'casino'
+  | 'pawnshop';
+export type LocationTag =
+  | 'starter'
+  | 'cheap'
+  | 'premium'
+  | 'illegal'
+  | 'heavyWeapons'
+  | 'luxuryCars'
+  | 'smuggling'
+  | 'recruitSchlaeger'
+  | 'recruitDriver'
+  | 'recruitShooter'
+  | 'recruitPlanner'
+  | 'recruitInformant'
+  | 'recruitNegotiator'
+  | 'highSociety'
+  | 'police'
+  | 'waterfront'
+  | 'railway';
 export type ActionId =
   | 'beg'
   | 'shop-robbery'
@@ -172,13 +208,31 @@ export interface OwnedWeapon {
 export interface BuildingConfig {
   id: BuildingType;
   name: string;
-  icon: string;
-  short: string;
-  mapLabel: string;
+  mapIcon: MapIconId;
   category: 'Unterkunft' | 'Geschäfte' | 'Risiko' | 'Stadt';
   description: string;
   district: District;
   actions: ActionId[];
+}
+
+export interface LocationInstance {
+  id: string;
+  type: BuildingType;
+  name: string;
+  shortName?: string;
+  district: District;
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  quality: 1 | 2 | 3 | 4;
+  risk: 1 | 2 | 3 | 4;
+  tags: LocationTag[];
+  description: string;
+  weaponInventory?: WeaponId[];
+  carInventory?: CarId[];
+  recruitRoles?: Role[];
+  tipTiers?: Array<TipConfig['tier']>;
 }
 
 export interface ActionConfig {
@@ -238,7 +292,7 @@ export interface Tile {
   kind: TileKind;
   building?: BuildingType;
   buildingVisualFor?: BuildingType;
-  buildingLabel?: string;
+  locationId?: string;
 }
 
 export interface LogEntry {
@@ -718,23 +772,23 @@ export const recruitTemplates: GangMemberTemplate[] = [
 ];
 
 export const buildings: BuildingConfig[] = [
-  { id: 'hideout', name: 'Versteck', icon: 'V', short: 'V', mapLabel: 'VERST', category: 'Unterkunft', description: 'Kalter Ofen, falsche Papiere, ein Bett pro Freund.', district: 'Altstadt', actions: ['lay-low', 'found-gang', 'gang-war'] },
-  { id: 'kneipe', name: 'Kneipe', icon: 'K', short: 'K', mapLabel: 'KNEIPE', category: 'Unterkunft', description: 'Rauch, Korn und Menschen, die neue Chefs suchen.', district: 'Rotlichtgasse', actions: ['ask-tip', 'alcohol-buy', 'alcohol-sell', 'blackmail', 'gang-war'] },
-  { id: 'hotel', name: 'Hotel', icon: 'H', short: 'H', mapLabel: 'HOTEL', category: 'Unterkunft', description: 'Teure Zimmer, diskrete Türen, bessere Kontakte.', district: 'Villenviertel', actions: ['rent-room', 'found-gang'] },
-  { id: 'weapons', name: 'Waffenhändler', icon: '†', short: 'WA', mapLabel: 'WAFF', category: 'Geschäfte', description: 'Der Keller riecht nach Öl und schlechten Entscheidungen.', district: 'Industriegebiet', actions: [] },
-  { id: 'cars', name: 'Autohändler', icon: 'A', short: 'A', mapLabel: 'AUTO', category: 'Geschäfte', description: 'Frisierte Motoren und Rechnungen ohne Namen.', district: 'Bahnhofsviertel', actions: ['steal-car'] },
-  { id: 'counterfeit', name: 'Blüten-Ede', icon: 'E', short: 'E', mapLabel: 'EDE', category: 'Geschäfte', description: 'Blüten-Ede sitzt im Hinterzimmer einer verrauchten Druckerei. Seine Scheine riechen fast echt.', district: 'Altstadt', actions: ['cheap-counterfeit', 'clean-counterfeit', 'master-counterfeit', 'fake-passport', 'counterfeit-contacts'] },
-  { id: 'bank', name: 'Bank', icon: 'B', short: 'B', mapLabel: 'BANK', category: 'Risiko', description: 'Marmor, Stahl und Wachmänner mit nervösen Händen.', district: 'Altstadt', actions: ['bank-robbery', 'safe-crack'] },
-  { id: 'casino', name: 'Casino', icon: 'C', short: 'C', mapLabel: 'CAS', category: 'Risiko', description: 'Glücksspiel, Schuldscheine und Samtvorhänge.', district: 'Rotlichtgasse', actions: ['casino-roulette', 'casino-crooked-cards', 'casino-roulette-brake', 'casino-high-table', 'casino-extort'] },
-  { id: 'police', name: 'Polizeirevier', icon: 'P', short: 'PR', mapLabel: 'POL', category: 'Stadt', description: 'Aktenordner, Zellen, Namen an Tafeln.', district: 'Polizeibezirk', actions: ['police-chief-bribe', 'police-bribe'] },
-  { id: 'hospital', name: 'Krankenhaus', icon: '+', short: '+', mapLabel: 'KH', category: 'Stadt', description: 'Saubere Laken für dreckiges Geld.', district: 'Polizeibezirk', actions: ['heal-player'] },
-  { id: 'harbor', name: 'Hafenlager', icon: '▓', short: 'HL', mapLabel: 'HAFEN', category: 'Risiko', description: 'Kisten, Nebel, Wachhunde und verschwundene Fracht.', district: 'Hafenviertel', actions: ['harbor-heist'] },
-  { id: 'station', name: 'Bahnhof', icon: 'Z', short: 'Z', mapLabel: 'BHF', category: 'Stadt', description: 'Koffer, Fahrpläne und niemand schaut zweimal hin.', district: 'Bahnhofsviertel', actions: ['station-job', 'train-robbery', 'money-transport'] },
-  { id: 'villa', name: 'Villa', icon: '♛', short: 'VI', mapLabel: 'VILLA', category: 'Risiko', description: 'Reiche Leute schlafen schlecht, wenn Du davon weißt.', district: 'Villenviertel', actions: ['villa-burglary', 'mayor-hit'] },
-  { id: 'pawnshop', name: 'Pfandleihe', icon: '¤', short: 'PF', mapLabel: 'PFAND', category: 'Geschäfte', description: 'Hier bekommt jedes Problem einen Preis.', district: 'Industriegebiet', actions: ['small-theft', 'pawn-sale'] },
-  { id: 'subway', name: 'U-Bahn', icon: 'U', short: 'U', mapLabel: 'U', category: 'Stadt', description: 'Gedränge am Bahnsteig. Kleine Hände, kleine Scheine.', district: 'Bahnhofsviertel', actions: ['subway-pickpocket'] },
-  { id: 'loanshark', name: 'Kredit-Hai', icon: 'L', short: 'L', mapLabel: 'KREDIT', category: 'Geschäfte', description: 'Geld heute, Schmerzen morgen.', district: 'Rotlichtgasse', actions: ['loan-take', 'loan-repay', 'credit-start', 'credit-invest', 'debt-collection'] },
-  { id: 'shop', name: 'Laden', icon: 'S', short: 'S', mapLabel: 'SHOP', category: 'Geschäfte', description: 'Kasse, Besitzer, Schaufenster. Ein Anfang.', district: 'Altstadt', actions: ['beg', 'shop-robbery', 'blackmail'] },
+  { id: 'hideout', name: 'Versteck', mapIcon: 'hideout', category: 'Unterkunft', description: 'Kalter Ofen, falsche Papiere, ein Bett pro Freund.', district: 'Altstadt', actions: ['lay-low', 'found-gang', 'gang-war'] },
+  { id: 'kneipe', name: 'Kneipe', mapIcon: 'pub', category: 'Unterkunft', description: 'Rauch, Korn und Menschen, die neue Chefs suchen.', district: 'Rotlichtgasse', actions: ['ask-tip', 'alcohol-buy', 'alcohol-sell', 'blackmail', 'gang-war'] },
+  { id: 'hotel', name: 'Hotel', mapIcon: 'hotel', category: 'Unterkunft', description: 'Teure Zimmer, diskrete Türen, bessere Kontakte.', district: 'Villenviertel', actions: ['rent-room', 'found-gang'] },
+  { id: 'weapons', name: 'Waffenhändler', mapIcon: 'weapons', category: 'Geschäfte', description: 'Der Keller riecht nach Öl und schlechten Entscheidungen.', district: 'Industriegebiet', actions: [] },
+  { id: 'cars', name: 'Autohändler', mapIcon: 'carDealer', category: 'Geschäfte', description: 'Frisierte Motoren und Rechnungen ohne Namen.', district: 'Bahnhofsviertel', actions: ['steal-car'] },
+  { id: 'counterfeit', name: 'Blüten-Ede', mapIcon: 'counterfeit', category: 'Geschäfte', description: 'Blüten-Ede sitzt im Hinterzimmer einer verrauchten Druckerei. Seine Scheine riechen fast echt.', district: 'Altstadt', actions: ['cheap-counterfeit', 'clean-counterfeit', 'master-counterfeit', 'fake-passport', 'counterfeit-contacts'] },
+  { id: 'bank', name: 'Bank', mapIcon: 'bank', category: 'Risiko', description: 'Marmor, Stahl und Wachmänner mit nervösen Händen.', district: 'Altstadt', actions: ['bank-robbery', 'safe-crack'] },
+  { id: 'casino', name: 'Casino', mapIcon: 'casino', category: 'Risiko', description: 'Glücksspiel, Schuldscheine und Samtvorhänge.', district: 'Rotlichtgasse', actions: ['casino-roulette', 'casino-crooked-cards', 'casino-roulette-brake', 'casino-high-table', 'casino-extort'] },
+  { id: 'police', name: 'Polizeirevier', mapIcon: 'police', category: 'Stadt', description: 'Aktenordner, Zellen, Namen an Tafeln.', district: 'Polizeibezirk', actions: ['police-chief-bribe', 'police-bribe'] },
+  { id: 'hospital', name: 'Krankenhaus', mapIcon: 'hospital', category: 'Stadt', description: 'Saubere Laken für dreckiges Geld.', district: 'Polizeibezirk', actions: ['heal-player'] },
+  { id: 'harbor', name: 'Hafenlager', mapIcon: 'harbor', category: 'Risiko', description: 'Kisten, Nebel, Wachhunde und verschwundene Fracht.', district: 'Hafenviertel', actions: ['harbor-heist'] },
+  { id: 'station', name: 'Bahnhof', mapIcon: 'station', category: 'Stadt', description: 'Koffer, Fahrpläne und niemand schaut zweimal hin.', district: 'Bahnhofsviertel', actions: ['station-job', 'train-robbery', 'money-transport'] },
+  { id: 'villa', name: 'Villa', mapIcon: 'villa', category: 'Risiko', description: 'Reiche Leute schlafen schlecht, wenn Du davon weißt.', district: 'Villenviertel', actions: ['villa-burglary', 'mayor-hit'] },
+  { id: 'pawnshop', name: 'Pfandleihe', mapIcon: 'pawnshop', category: 'Geschäfte', description: 'Hier bekommt jedes Problem einen Preis.', district: 'Industriegebiet', actions: ['small-theft', 'pawn-sale'] },
+  { id: 'subway', name: 'U-Bahn', mapIcon: 'subway', category: 'Stadt', description: 'Gedränge am Bahnsteig. Kleine Hände, kleine Scheine.', district: 'Bahnhofsviertel', actions: ['subway-pickpocket'] },
+  { id: 'loanshark', name: 'Kredit-Hai', mapIcon: 'loanShark', category: 'Geschäfte', description: 'Geld heute, Schmerzen morgen.', district: 'Rotlichtgasse', actions: ['loan-take', 'loan-repay', 'credit-start', 'credit-invest', 'debt-collection'] },
+  { id: 'shop', name: 'Laden', mapIcon: 'shop', category: 'Geschäfte', description: 'Kasse, Besitzer, Schaufenster. Ein Anfang.', district: 'Altstadt', actions: ['beg', 'shop-robbery', 'blackmail'] },
 ];
 
 export const actions: ActionConfig[] = [
@@ -811,23 +865,23 @@ export const tileVisuals: Record<TileKind, { icon: string; name: string }> = {
 
 const cityLayout = [
   '################################',
-  '#VV..SS.RR.BB..EE.RR.PPPP.NN...#',
-  '#VV..SS.RR.BB.....RR.PPPP......#',
-  '#....RRRR....SS...RR...........#',
-  '#KK..RR..UU..BB..LL..SS..KK....#',
-  '#KK......RR..WW..LL..SS........#',
-  '####..RRRRRRRRRRRRRRRR..#####..#',
-  '~~~~~~:MMM..WW..XX..RR..AA.....#',
-  '~~~~~~:MMM..WW..XX..RR..AA.....#',
-  '~~~~~~:SS...RR..RR..RR.........#',
-  '~~~~~~:KK...RR..CCC.RR..LL.....#',
-  '~~~~~~:.....RR..CCC.....SS.....#',
-  '######RRRRRRRRRRRRRRRRRRRR###..#',
-  '#..HH..UU..ZZZZ..RR..BB..HH....#',
-  '#..HH..RR..ZZZZ..RR..BB..HH....#',
-  '#......RR..==================..#',
-  '#..SS..RR..XX..UU..CC..AA......#',
-  '#..KK......SS..RR..CC..AA......#',
+  '#==============================#',
+  '#..ZZZZZZZZ....UU..HH..XX......#',
+  '#RRRRRRRRRRRRRRRRRRRRRRRRRRRRRR#',
+  '#VV..SS..RR..BB..EE..RR..SS....#',
+  '#VV..KK..RR..BB......RR..LL....#',
+  '#....KK..RR..SS..RRRRRR..LL....#',
+  '#RRRRRRRRRRRRRR..RR..CCC..KK...#',
+  '~~~~~~:MMM..RR..XX..RR..CCC.KK.#',
+  '~~~~~~:MMM..RR..WW..RR..SS..RRR#',
+  '~~~~~~:KK...RR..WW..RR..LL..RR.#',
+  '~~~~~~:KK...RR......RR......RR.#',
+  '######RRRRRRRRRRRRRRRRRRRRRRR..#',
+  '#..AA..RR..SS..RR..CC..RR..PPPP#',
+  '#..AA..RR..WW..RR..CC..RR..PPPP#',
+  '#..XX..RR..WW..RR......RR..NN..#',
+  '#..HH..RRRRRRRRRRRRRRRRRR..NN..#',
+  '#..HH......RR..UU..RR..AA......#',
   '####..RRRRRRRRRRRRRR..RR..###..#',
   '#..HH..RR..BB..RR..YYYY..TTT...#',
   '#..HH..RR..BB..RR..YYYY..TTT...#',
@@ -856,48 +910,44 @@ const buildingChars: Partial<Record<string, BuildingType>> = {
   Y: 'villa',
 };
 
-const buildingLabels: Array<{ x: number; y: number; building: BuildingType; label?: string }> = [
-  { x: 2, y: 2, building: 'hideout', label: 'VERST' },
-  { x: 5, y: 1, building: 'shop', label: 'S' },
-  { x: 11, y: 1, building: 'bank', label: 'BANK' },
-  { x: 15, y: 1, building: 'counterfeit', label: 'EDE' },
-  { x: 21, y: 1, building: 'police', label: 'POL' },
-  { x: 26, y: 1, building: 'hospital', label: 'KH' },
-  { x: 1, y: 4, building: 'kneipe', label: 'K' },
-  { x: 9, y: 4, building: 'subway', label: 'U' },
-  { x: 13, y: 4, building: 'bank', label: 'B' },
-  { x: 17, y: 4, building: 'loanshark', label: 'KREDIT' },
-  { x: 21, y: 4, building: 'shop', label: 'S' },
-  { x: 25, y: 4, building: 'kneipe', label: 'K' },
-  { x: 13, y: 5, building: 'weapons', label: 'WAFF' },
-  { x: 7, y: 7, building: 'harbor', label: 'HAFEN' },
-  { x: 12, y: 7, building: 'weapons', label: 'W' },
-  { x: 16, y: 7, building: 'pawnshop', label: 'PFAND' },
-  { x: 24, y: 7, building: 'cars', label: 'AUTO' },
-  { x: 7, y: 9, building: 'shop', label: 'S' },
-  { x: 7, y: 10, building: 'kneipe', label: 'K' },
-  { x: 16, y: 10, building: 'casino', label: 'CAS' },
-  { x: 24, y: 10, building: 'loanshark', label: 'L' },
-  { x: 25, y: 11, building: 'shop', label: 'S' },
-  { x: 3, y: 13, building: 'hotel', label: 'HOTEL' },
-  { x: 7, y: 13, building: 'subway', label: 'U' },
-  { x: 11, y: 13, building: 'station', label: 'BHF' },
-  { x: 21, y: 13, building: 'bank', label: 'B' },
-  { x: 25, y: 13, building: 'hotel', label: 'H' },
-  { x: 3, y: 16, building: 'shop', label: 'S' },
-  { x: 11, y: 16, building: 'pawnshop', label: 'P' },
-  { x: 15, y: 16, building: 'subway', label: 'U' },
-  { x: 20, y: 16, building: 'casino', label: 'C' },
-  { x: 24, y: 16, building: 'cars', label: 'A' },
-  { x: 3, y: 17, building: 'kneipe', label: 'K' },
-  { x: 11, y: 17, building: 'shop', label: 'S' },
-  { x: 3, y: 19, building: 'hotel', label: 'HOTEL' },
-  { x: 11, y: 19, building: 'bank', label: 'BANK' },
-  { x: 19, y: 19, building: 'villa', label: 'VILLA' },
-  { x: 3, y: 21, building: 'shop', label: 'S' },
-  { x: 11, y: 21, building: 'casino', label: 'CAS' },
-  { x: 22, y: 21, building: 'villa', label: 'V' },
-  { x: 25, y: 21, building: 'cars', label: 'A' },
+export const locationInstances: LocationInstance[] = [
+  { id: 'bahnhof-hauptbahnhof', type: 'station', name: 'Hauptbahnhof Nord', district: 'Bahnhofsviertel', x: 3, y: 2, width: 8, height: 1, quality: 3, risk: 3, tags: ['railway'], description: 'Eine lange Bahnhofsfassade direkt unter den Gleisen. Davor beginnt die Stadt.' },
+  { id: 'bahnhof-ubahn', type: 'subway', name: 'U Nordbahnhof', district: 'Bahnhofsviertel', x: 15, y: 2, width: 2, height: 1, quality: 2, risk: 2, tags: ['railway'], description: 'Ein klares U unter der Bahnlinie. Später vielleicht die schnelle Abkürzung.' },
+  { id: 'bahnhof-hotel', type: 'hotel', name: 'Bahnhofshotel Continental', district: 'Bahnhofsviertel', x: 19, y: 2, width: 2, height: 1, quality: 2, risk: 2, tags: ['recruitDriver'], recruitRoles: ['Fahrerin', 'Safeknacker'], description: 'Diskrete Zimmer für Leute, die mit leichtem Gepäck reisen.' },
+  { id: 'bahnhof-pfand', type: 'pawnshop', name: 'Pfandleihe Gleis 4', district: 'Bahnhofsviertel', x: 23, y: 2, width: 2, height: 1, quality: 2, risk: 2, tags: ['railway', 'cheap'], description: 'Koffer, Uhren, Schuldscheine. Alles findet hier einen Preis.' },
+  { id: 'altstadt-versteck', type: 'hideout', name: 'Keller in der Altstadt', shortName: 'Versteck', district: 'Altstadt', x: 1, y: 4, width: 2, height: 2, quality: 1, risk: 1, tags: ['starter', 'cheap'], description: 'Ein feuchter Keller hinter einer Bäckerei. Nicht schön, aber niemand fragt nach Namen.' },
+  { id: 'altstadt-kolonialwaren', type: 'shop', name: 'Kolonialwaren Kruse', district: 'Altstadt', x: 5, y: 4, width: 2, height: 1, quality: 1, risk: 1, tags: ['starter', 'cheap'], description: 'Kleine Kasse, kleiner Besitzer, kleine Mutprobe.' },
+  { id: 'altstadt-kneipe', type: 'kneipe', name: 'Zum Krummen Groschen', district: 'Altstadt', x: 5, y: 5, width: 2, height: 2, quality: 1, risk: 1, tags: ['starter', 'cheap', 'recruitSchlaeger'], recruitRoles: ['Schlaeger', 'Informant'], tipTiers: ['early'], description: 'Die erste Adresse für billige Hilfe, dünnes Bier und kleine Gerüchte.' },
+  { id: 'altstadt-sparkasse', type: 'bank', name: 'Altstadt-Sparkasse', district: 'Altstadt', x: 13, y: 4, width: 2, height: 2, quality: 1, risk: 2, tags: ['starter'], description: 'Eine enge Filiale mit nervösem Kassierer und dünner Beute.' },
+  { id: 'blueten-ede', type: 'counterfeit', name: 'Blüten-Ede', district: 'Altstadt', x: 17, y: 4, width: 2, height: 1, quality: 2, risk: 3, tags: ['illegal'], description: 'Blüten-Ede sitzt im Hinterzimmer einer verrauchten Druckerei. Seine Scheine riechen fast echt.' },
+  { id: 'altstadt-schneider', type: 'shop', name: 'Schneider & Co.', district: 'Altstadt', x: 25, y: 4, width: 2, height: 1, quality: 2, risk: 2, tags: ['starter'], description: 'Ein ordentliches Schaufenster mit weniger ordentlicher Buchhaltung.' },
+  { id: 'altstadt-buchladen', type: 'shop', name: 'Buchladen Adler', district: 'Altstadt', x: 13, y: 6, width: 2, height: 1, quality: 2, risk: 2, tags: ['starter'], description: 'Hinten werden nicht nur Bücher sortiert.' },
+  { id: 'rotlicht-kredithai', type: 'loanshark', name: 'Kredit-Hai Rocco', district: 'Rotlichtgasse', x: 25, y: 5, width: 2, height: 2, quality: 2, risk: 3, tags: ['illegal'], description: 'Geld heute, Schmerzen morgen. Rocco zählt beides genau.' },
+  { id: 'rotlicht-casino', type: 'casino', name: 'Casino Gloria', district: 'Rotlichtgasse', x: 21, y: 7, width: 3, height: 2, quality: 3, risk: 3, tags: ['illegal', 'recruitInformant'], recruitRoles: ['Informant', 'Verhandler'], tipTiers: ['mid'], description: 'Samt, Karten, Würfel und Schulden, die nie schlafen.' },
+  { id: 'rotlicht-kneipe', type: 'kneipe', name: 'Blaue Laterne', district: 'Rotlichtgasse', x: 27, y: 7, width: 2, height: 1, quality: 2, risk: 3, tags: ['illegal', 'recruitInformant'], recruitRoles: ['Informant', 'Verhandler'], tipTiers: ['early', 'mid'], description: 'Ein Tresen im roten Licht. Manche Gäste verkaufen Gerüchte, andere kaufen Ärger.' },
+  { id: 'rotlicht-laden', type: 'shop', name: 'Nachtkiosk Silva', district: 'Rotlichtgasse', x: 23, y: 9, width: 2, height: 1, quality: 3, risk: 3, tags: ['illegal'], description: 'Der Laden öffnet spät und zahlt ungern.' },
+  { id: 'rotlicht-buchmacher', type: 'loanshark', name: 'Buchmacher Neri', district: 'Rotlichtgasse', x: 24, y: 10, width: 2, height: 1, quality: 3, risk: 3, tags: ['illegal'], description: 'Ein Lächeln, ein Notizbuch und ein sehr langer Arm.' },
+  { id: 'hafen-lager', type: 'harbor', name: 'Hafenlager 3', district: 'Hafenviertel', x: 7, y: 8, width: 3, height: 2, quality: 3, risk: 3, tags: ['waterfront', 'smuggling'], description: 'Kisten, Nebel und Männer, die lieber ins Wasser schauen als in Deine Augen.' },
+  { id: 'hafen-pfand', type: 'pawnshop', name: 'Pfandleihe am Kai', district: 'Hafenviertel', x: 16, y: 8, width: 2, height: 1, quality: 2, risk: 2, tags: ['waterfront'], description: 'Salzflecken auf dem Tresen und keine Fragen zur Herkunft.' },
+  { id: 'hafen-schmuggler', type: 'weapons', name: 'Schmugglerlager', shortName: 'Schwere Ware', district: 'Hafenviertel', x: 15, y: 9, width: 2, height: 2, quality: 4, risk: 4, tags: ['illegal', 'heavyWeapons', 'waterfront'], weaponInventory: ['winchester97', 'thompson', 'browningBar', 'grenades'], description: 'Unter Planen liegen Waffen, die nicht für kleine Streitigkeiten gebaut wurden.' },
+  { id: 'hafen-kneipe', type: 'kneipe', name: 'Zur Rostigen Schraube', district: 'Hafenviertel', x: 7, y: 10, width: 2, height: 2, quality: 2, risk: 3, tags: ['smuggling', 'recruitDriver', 'recruitSchlaeger'], recruitRoles: ['Fahrerin', 'Schlaeger', 'Safeknacker'], tipTiers: ['early', 'mid'], description: 'Fahrer, Schmuggler und raue Hände sammeln sich dort, wo die Docks knarren.' },
+  { id: 'industrie-auto', type: 'cars', name: 'Hinterhofhändler Kralle', district: 'Industriegebiet', x: 3, y: 13, width: 2, height: 2, quality: 1, risk: 2, tags: ['cheap'], carInventory: ['talbot90', 'citroenTa'], description: 'Zwei Wagen, drei Papiere, vier Lügen. Für den Anfang reicht es.' },
+  { id: 'industrie-shop', type: 'shop', name: 'Werkzeug Mohr', district: 'Industriegebiet', x: 11, y: 13, width: 2, height: 1, quality: 2, risk: 2, tags: ['cheap'], description: 'Kasse und Lager sind getrennt. Der Besitzer leider nicht.' },
+  { id: 'industrie-waffen', type: 'weapons', name: 'Hinterhofhändler', shortName: 'Einfache Pistolen', district: 'Industriegebiet', x: 11, y: 14, width: 2, height: 2, quality: 1, risk: 2, tags: ['cheap', 'illegal'], weaponInventory: ['colt1911', 'savage1907', 'sw10', 'remington11'], description: 'Einfache Pistolen, Ölgeruch und ein Händler, der niemandem vertraut.' },
+  { id: 'industrie-pfand', type: 'pawnshop', name: 'Pfandleihe Bender', district: 'Industriegebiet', x: 3, y: 15, width: 2, height: 1, quality: 2, risk: 2, tags: ['cheap'], description: 'Hier bekommt jedes Problem einen Preis und kaum jemand eine Quittung.' },
+  { id: 'industrie-hotel', type: 'hotel', name: 'Hotel Nordstern', district: 'Industriegebiet', x: 3, y: 16, width: 2, height: 2, quality: 2, risk: 2, tags: ['recruitDriver'], recruitRoles: ['Fahrerin', 'Safeknacker'], description: 'Diskrete Zimmer für Leute, die selten Gepäck tragen.' },
+  { id: 'industrie-ubahn', type: 'subway', name: 'U Fabrikstraße', district: 'Industriegebiet', x: 15, y: 17, width: 2, height: 1, quality: 2, risk: 2, tags: [], description: 'Beton, Ruß und ein klarer Weg unter der Stadt.' },
+  { id: 'rotlicht-spielclub', type: 'casino', name: 'Spielclub Rote Lampe', district: 'Rotlichtgasse', x: 19, y: 13, width: 2, height: 2, quality: 2, risk: 3, tags: ['illegal'], description: 'Kleine Tische, große Schulden.' },
+  { id: 'polizei-praesidium', type: 'police', name: 'Polizeipräsidium Südost', district: 'Polizeibezirk', x: 27, y: 13, width: 4, height: 2, quality: 4, risk: 4, tags: ['police'], description: 'Ein eigener Block aus Akten, Zellen und schweren Türen. Weit weg von der Altstadt.' },
+  { id: 'polizei-klinik', type: 'hospital', name: 'Städtisches Krankenhaus', district: 'Polizeibezirk', x: 27, y: 15, width: 2, height: 2, quality: 2, risk: 1, tags: ['police'], description: 'Saubere Laken direkt am Polizeibezirk. Niemand fragt zweimal, aber jeder sieht hin.' },
+  { id: 'bahnhof-autohaus', type: 'cars', name: 'Autohaus Adler', district: 'Bahnhofsviertel', x: 23, y: 17, width: 2, height: 1, quality: 2, risk: 2, tags: [], carInventory: ['chevyRoadster', 'buickCentury'], description: 'Ordentliche Wagen mit unordentlichen Papieren.' },
+  { id: 'villen-juwelier', type: 'shop', name: 'Juwelier Goldbach', district: 'Villenviertel', x: 3, y: 19, width: 2, height: 1, quality: 4, risk: 4, tags: ['premium', 'highSociety'], description: 'Der Schutz dieses Ladens wäre mehr wert als manche Bank.' },
+  { id: 'villen-grandhotel', type: 'hotel', name: 'Grand Hotel Kaiserhof', district: 'Villenviertel', x: 3, y: 20, width: 2, height: 1, quality: 4, risk: 3, tags: ['premium', 'highSociety', 'recruitPlanner', 'recruitShooter'], recruitRoles: ['Planer', 'Schuetzin', 'Verhandler'], description: 'Teppiche schlucken Schritte. Preise schlucken Zweifel.' },
+  { id: 'villen-kneipe', type: 'kneipe', name: 'Salon Hinterzimmer', district: 'Villenviertel', x: 3, y: 21, width: 2, height: 1, quality: 3, risk: 3, tags: ['premium', 'highSociety', 'recruitPlanner'], recruitRoles: ['Planer', 'Verhandler'], tipTiers: ['mid'], description: 'Keine Kneipe, eher ein diskreter Raum mit teuren Flaschen.' },
+  { id: 'villen-privatbank', type: 'bank', name: 'Privatbank Falkenstein', district: 'Villenviertel', x: 11, y: 19, width: 2, height: 2, quality: 4, risk: 4, tags: ['premium', 'highSociety'], description: 'Dicke Türen, dicke Konten, dicke Akten.' },
+  { id: 'villen-casino', type: 'casino', name: 'Salon Bellevue', district: 'Villenviertel', x: 11, y: 21, width: 2, height: 1, quality: 4, risk: 4, tags: ['premium', 'highSociety'], description: 'Kein Schild, keine laute Musik, nur sehr teure Fehler.' },
+  { id: 'villen-magnatenhaus', type: 'villa', name: 'Villa Rosenhain', district: 'Villenviertel', x: 19, y: 19, width: 4, height: 3, quality: 4, risk: 4, tags: ['premium', 'highSociety'], description: 'Ein Tor, ein Garten, viele Fenster und noch mehr Silber.' },
+  { id: 'villen-luxusgarage', type: 'cars', name: 'Luxusgarage Marquardt', district: 'Villenviertel', x: 25, y: 21, width: 2, height: 1, quality: 4, risk: 3, tags: ['premium', 'luxuryCars'], carInventory: ['auburn120'], description: 'Chrom, Leder und Preise, bei denen selbst Gangster leiser werden.' },
 ];
 
 export function getWeapon(id: WeaponId): WeaponConfig {
@@ -939,13 +989,60 @@ export function getAction(id: ActionId): ActionConfig {
   return actions.find((action) => action.id === id)!;
 }
 
+export function availableWeaponsForLocation(state: GameState): WeaponConfig[] {
+  const location = getCurrentLocation(state);
+  const inventory = location?.weaponInventory;
+  if (inventory) return weapons.filter((weapon) => inventory.includes(weapon.id));
+  return weapons.filter((weapon) => weapon.id !== 'none');
+}
+
+export function availableCarsForLocation(state: GameState): CarConfig[] {
+  const location = getCurrentLocation(state);
+  const inventory = location?.carInventory;
+  if (inventory) return cars.filter((car) => inventory.includes(car.id));
+  return cars.filter((car) => car.id !== 'foot');
+}
+
+export function availableRecruitsForLocation(state: GameState): GangMemberTemplate[] {
+  const location = getCurrentLocation(state);
+  if (!location?.recruitRoles?.length) {
+    return recruitTemplates.filter((recruit) => location?.quality === 4 || recruit.cost <= 3500);
+  }
+  return recruitTemplates.filter((recruit) => (
+    location.recruitRoles?.includes(recruit.role) &&
+    (location.quality >= 3 || recruit.cost <= 3500)
+  ));
+}
+
+function locationRewardMultiplier(state: GameState, action: ActionConfig): number {
+  const location = getCurrentLocation(state);
+  if (!location) return 1;
+  if (action.building !== location.type && !(action.id === 'blackmail' && location.type === 'shop')) return 1;
+  if (['bank-robbery', 'safe-crack', 'shop-robbery', 'blackmail', 'villa-burglary', 'harbor-heist', 'casino-extort'].includes(action.id)) {
+    return 1 + (location.quality - 1) * 0.32;
+  }
+  return 1;
+}
+
+export function actionRewardRange(state: GameState, action: ActionConfig): [number, number] | undefined {
+  if (!action.reward) return undefined;
+  const multiplier = locationRewardMultiplier(state, action);
+  return [Math.round(action.reward[0] * multiplier), Math.round(action.reward[1] * multiplier)];
+}
+
+export function locationSummary(location?: LocationInstance): string {
+  if (!location) return '';
+  return `${location.name} — Qualität ${location.quality}, Risiko ${location.risk}`;
+}
+
 function districtFor(x: number, y: number): District {
-  if (x >= 22 && y <= 8) return 'Polizeibezirk';
-  if (x <= 10 && y >= 7 && y <= 12) return 'Hafenviertel';
+  if (y <= 3) return 'Bahnhofsviertel';
+  if (x <= 10 && y >= 8 && y <= 12) return 'Hafenviertel';
+  if (x >= 26 && y >= 13 && y <= 18) return 'Polizeibezirk';
+  if (x >= 18 && y >= 19) return 'Villenviertel';
   if (y >= 19) return 'Villenviertel';
-  if (y >= 13 && y <= 18) return 'Bahnhofsviertel';
-  if (x >= 8 && x <= 18 && y >= 7 && y <= 12) return 'Industriegebiet';
-  if (x >= 16 && y >= 7 && y <= 12) return 'Rotlichtgasse';
+  if (x <= 17 && y >= 13 && y <= 18) return 'Industriegebiet';
+  if (x >= 18 && y >= 7 && y <= 15) return 'Rotlichtgasse';
   return 'Altstadt';
 }
 
@@ -968,9 +1065,9 @@ export function createMap(): Tile[] {
   for (let y = 0; y < MAP_HEIGHT; y += 1) {
     for (let x = 0; x < MAP_WIDTH; x += 1) {
       const char = cityLayout[y]?.[x] ?? '#';
-      const district = districtFor(x, y);
       const building = buildingChars[char];
-      const label = buildingLabels.find((item) => item.x === x && item.y === y && item.building === building);
+      const location = building ? locationAt(x, y, building) : undefined;
+      const district = location?.district ?? districtFor(x, y);
       tiles.push({
         id: `${x}-${y}`,
         x,
@@ -978,12 +1075,28 @@ export function createMap(): Tile[] {
         district,
         kind: kindForLayoutChar(char),
         building,
-        buildingVisualFor: label?.building,
-        buildingLabel: label?.label,
+        buildingVisualFor: location && location.x === x && location.y === y ? location.type : undefined,
+        locationId: location?.id,
       });
     }
   }
   return tiles;
+}
+
+function locationAt(x: number, y: number, building?: BuildingType): LocationInstance | undefined {
+  return locationInstances.find((location) => {
+    const width = location.width ?? 1;
+    const height = location.height ?? 1;
+    return (!building || location.type === building) &&
+      x >= location.x &&
+      x < location.x + width &&
+      y >= location.y &&
+      y < location.y + height;
+  });
+}
+
+export function getLocation(id: string): LocationInstance | undefined {
+  return locationInstances.find((location) => location.id === id);
 }
 
 export function getAdjacentBuildingTile(position: { x: number; y: number }, map: Tile[]): Tile | undefined {
@@ -993,7 +1106,14 @@ export function getAdjacentBuildingTile(position: { x: number; y: number }, map:
   ));
 }
 
+export function getCurrentLocation(state: GameState): LocationInstance | undefined {
+  const tile = getAdjacentBuildingTile(state.position, state.map);
+  return tile?.locationId ? getLocation(tile.locationId) : undefined;
+}
+
 export function getCurrentBuilding(state: GameState): BuildingConfig | undefined {
+  const location = getCurrentLocation(state);
+  if (location) return getBuilding(location.type);
   const tile = getAdjacentBuildingTile(state.position, state.map);
   return tile?.building ? getBuilding(tile.building) : undefined;
 }
@@ -1014,8 +1134,8 @@ export function validateMapConnectivity(map: Tile[] = createMap(), start = { x: 
   }
   const unreachable = map.filter((tile) => tile.buildingVisualFor && !adjacentWalkableSeen(tile, map, seen));
   const buildingsWithoutReachableAdjacency = buildings.filter((building) => !map.some((tile) => tile.building === building.id && adjacentWalkableSeen(tile, map, seen)));
-  const counts = buildingLabels.reduce<Record<string, number>>((sum, label) => {
-    sum[label.building] = (sum[label.building] ?? 0) + 1;
+  const counts = locationInstances.reduce<Record<string, number>>((sum, location) => {
+    sum[location.type] = (sum[location.type] ?? 0) + 1;
     return sum;
   }, {});
   const missingActionBuildings = buildings.filter((building) => building.actions.length > 0 && !counts[building.id]);
@@ -1024,13 +1144,13 @@ export function validateMapConnectivity(map: Tile[] = createMap(), start = { x: 
   const harborTouchesWater = harborTiles.some((tile) => neighborKinds(tile, map).some((kind) => kind === 'water' || kind === 'dock'));
   const stationTouchesRails = stationTiles.some((tile) => neighborKinds(tile, map).some((kind) => kind === 'rails' || kind === 'sidewalk'));
   const belowTargets = {
-    shop: 7,
+    shop: 5,
     hotel: 3,
-    bank: 4,
+    bank: 2,
     kneipe: 4,
     cars: 3,
     casino: 3,
-    subway: 3,
+    subway: 2,
     loanshark: 2,
     weapons: 2,
   };
@@ -1176,15 +1296,15 @@ export function alcoholCapacity(state: GameState): number {
 }
 
 function monthlyKey(state: GameState, action: ActionConfig): string {
-  return `${action.cooldownKey ?? action.id}:${state.position.x}:${state.position.y}`;
+  return `${action.cooldownKey ?? action.id}:${getCurrentLocation(state)?.id ?? `${state.position.x}:${state.position.y}`}`;
 }
 
 function shopKeyAt(state: GameState): string {
-  return `${state.position.x}:${state.position.y}`;
+  return getCurrentLocation(state)?.id ?? `${state.position.x}:${state.position.y}`;
 }
 
 function shopLabel(key: string): string {
-  return `Laden ${key}`;
+  return getLocation(key)?.name ?? `Laden ${key}`;
 }
 
 export function statLabel(stat: Requirement['stat']): string {
@@ -1220,7 +1340,7 @@ export function newGame(
     gangName: gangName.trim() || DEFAULT_GANG_NAMES[0],
     month: 0,
     points: 0,
-    position: { x: 3, y: 2 },
+    position: { x: 3, y: 4 },
     stepsLeft: getCar(car).movementPoints,
     stats: {
       money: 700,
@@ -1386,9 +1506,11 @@ function successChance(state: GameState, action: ActionConfig): number {
   const effective = getEffectiveStats(state);
   const roleBonus = (action.recommendedRoles ?? []).reduce((sum, role) => sum + (activeGang(state.gang).some((member) => member.role === role) ? 8 : 0), 0);
   const car = getCar(state.car);
+  const location = getCurrentLocation(state);
   const complexityBonus = effective.planning * 0.8 + effective.driving * 0.5 + (car.heistBonus ?? 0);
   const base = action.risk === 'niedrig' ? 78 : action.risk === 'mittel' ? 62 : action.risk === 'hoch' ? 47 : 32;
-  const pressure = state.stats.wanted * 4 + state.stats.danger * 3 + Math.max(0, action.policeRisk + car.policeRiskModifier) * 3;
+  const locationPressure = location && action.building === location.type ? (location.risk - 1) * 4 : 0;
+  const pressure = state.stats.wanted * 4 + state.stats.danger * 3 + Math.max(0, action.policeRisk + car.policeRiskModifier) * 3 + locationPressure;
   return clamp(base + effective.combat * 1.2 + roleBonus + complexityBonus - pressure, 8, 92);
 }
 
@@ -1528,10 +1650,13 @@ export function describeAction(state: GameState, action: ActionConfig): string[]
   const cost = actionCost(state, action);
   const capLeft = Math.max(0, MONTHLY_POINT_CAP - state.monthlyPointGain);
   const activeTip = tipForAction(state, action.id);
+  const location = getCurrentLocation(state);
+  const reward = actionRewardRange(state, action);
   return [
+    location ? `Ort: ${locationSummary(location)}` : '',
     cost ? `Kosten: ${formatMoney(cost)}` : 'Kosten: keine',
     `Schrittkosten: ${action.stepCost ?? 1}`,
-    action.reward ? `Mögliche Beute: ${formatMoney(action.reward[0])}-${formatMoney(action.reward[1])}` : action.effect,
+    reward ? `Mögliche Beute: ${formatMoney(reward[0])}-${formatMoney(reward[1])}` : action.effect,
     activeTip?.rewardModifier ? `Aktiver Tipp: ${activeTip.title}, Beute x${activeTip.rewardModifier.toFixed(2)}` : '',
     action.tipOnly ? 'Nur mit aktuellem Kneipen-Tipp sichtbar.' : '',
     `Risiko: ${action.risk}`,
@@ -1550,6 +1675,7 @@ export function describeAction(state: GameState, action: ActionConfig): string[]
 
 function availableTipPool(state: GameState): TipConfig[] {
   const rank = getRank(state.points).name;
+  const location = getCurrentLocation(state);
   const tierAllowed = (tip: TipConfig) => {
     if (tip.tier === 'early') return true;
     if (tip.tier === 'mid') return rankMeets(rank, 'Ganove');
@@ -1557,6 +1683,10 @@ function availableTipPool(state: GameState): TipConfig[] {
   };
   return tips.filter((tip) => {
     if (!tierAllowed(tip)) return false;
+    if (location?.tipTiers?.length && !location.tipTiers.includes(tip.tier)) return false;
+    if (location?.tags.includes('waterfront') && tip.locationDistrict && !['Hafenviertel', 'Bahnhofsviertel'].includes(tip.locationDistrict)) return false;
+    if (location?.tags.includes('railway') && tip.locationDistrict && tip.locationDistrict !== 'Bahnhofsviertel') return false;
+    if (location?.tags.includes('highSociety') && tip.locationDistrict && tip.locationDistrict !== 'Villenviertel') return false;
     if (tip.requiredRank && !rankMeets(rank, tip.requiredRank)) return false;
     if (tip.requiredStats && checkRequirements(state, tip.requiredStats).length) return false;
     if (state.activeTips.some((active) => active.id === tip.id && active.expiresMonth >= state.month)) return false;
@@ -1595,6 +1725,9 @@ export function buyTip(state: GameState, tipId: string): GameState {
 export function buyWeapon(state: GameState, weaponId: WeaponId): GameState {
   const weapon = getWeapon(weaponId);
   if (weaponId === 'none') return state;
+  if (getCurrentBuilding(state)?.id === 'weapons' && !availableWeaponsForLocation(state).some((item) => item.id === weaponId)) {
+    return withResult(addLog(state, `${weapon.name} wird hier nicht verkauft.`), 'Nicht möglich', [`${weapon.name} gibt es an diesem Ort nicht.`]);
+  }
   const blocked = checkRequirements(state, weapon.requiredStats);
   if (blocked.length) return withResult(addLog(state, blocked[0]), 'Nicht möglich', blocked);
   const paid = spend(state, weapon.price);
@@ -1622,6 +1755,9 @@ export function sellWeapon(state: GameState, ownedWeaponId: string): GameState {
 
 export function buyCar(state: GameState, carId: CarId): GameState {
   const car = getCar(carId);
+  if (getCurrentBuilding(state)?.id === 'cars' && !availableCarsForLocation(state).some((item) => item.id === carId)) {
+    return withResult(addLog(state, `${car.name} steht hier nicht auf dem Hof.`), 'Nicht möglich', [`${car.name} wird an diesem Ort nicht verkauft.`]);
+  }
   const blocked = checkRequirements(state, [{ stat: 'reputation', min: car.reputationRequirement }, ...car.requiredStats]);
   if (blocked.length) return withResult(addLog(state, blocked[0]), 'Nicht möglich', blocked);
   const paid = spend(state, car.price);
@@ -1635,6 +1771,9 @@ export function buyCar(state: GameState, carId: CarId): GameState {
 export function hireRecruit(state: GameState, templateId: string): GameState {
   const template = recruitTemplates.find((item) => item.templateId === templateId);
   if (!template) return state;
+  if (!availableRecruitsForLocation(state).some((recruit) => recruit.templateId === templateId)) {
+    return withResult(addLog(state, `${template.nickname} ist an diesem Ort nicht zu finden.`), 'Nicht möglich', [`${template.nickname} verkehrt nicht an diesem Ort.`]);
+  }
   if (!state.hotelRoom && !state.gangFounded) return withResult(addLog(state, 'Du brauchst erst ein Zimmer oder ein Versteck.'), 'Nicht möglich', ['Benötigt Hotelzimmer oder organisiertes Versteck.']);
   if (state.gang.length >= 10) return withResult(addLog(state, 'Mehr als zehn Leute werden zu laut.'), 'Nicht möglich', ['Maximal 10 Gangmitglieder.']);
   if (state.gang.some((member) => member.templateId === templateId && member.status !== 'tot')) return withResult(addLog(state, `${template.nickname} arbeitet bereits für Dich.`), 'Nicht möglich', [`${template.nickname} arbeitet bereits für Dich.`]);
@@ -1978,7 +2117,8 @@ export function resolveAction(state: GameState, actionId: ActionId): ActionResul
 
   if (success) {
     const tip = tipForAction(next, action.id);
-    const baseReward = action.reward ? action.reward[0] + Math.floor(Math.random() * (action.reward[1] - action.reward[0] + 1)) : 0;
+    const rewardRange = actionRewardRange(next, action);
+    const baseReward = rewardRange ? rewardRange[0] + Math.floor(Math.random() * (rewardRange[1] - rewardRange[0] + 1)) : 0;
     const reward = Math.round(baseReward * (tip?.rewardModifier ?? 1));
     const wantedIncrease = successfulWantedIncrease(action, policeShift);
     const points = awardRankPoints(next, action.pointEffect ?? 0, rankPointGroupForAction(action.id), Boolean(tip && action.tipOnly));
@@ -2261,7 +2401,7 @@ export function resolvePoliceCheck(state: GameState, option: 'flee' | 'bribe' | 
   next = {
     ...next,
     month: targetMonth,
-    position: { x: 23, y: 1 },
+    position: { x: 26, y: 16 },
     stepsLeft: getCar(next.car).movementPoints,
     monthly: jailMonths > 0 ? {} : next.monthly,
     monthlyInjured: true,
