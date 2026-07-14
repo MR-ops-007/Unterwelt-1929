@@ -868,25 +868,25 @@ const cityLayout = [
   '#==============================#',
   '#..ZZZZZZZZ....UU..HH..XX......#',
   '#RRRRRRRRRRRRRRRRRRRRRRRRRRRRRR#',
-  '#VV..SS..RR..BB..EE..RR..SS....#',
+  '#VVR.SS..RR..BB..EE..RR..SS....#',
   '#VV..KK..RR..BB......RR..LL....#',
-  '#....KK..RR..SS..RRRRRR..LL....#',
-  '#RRRRRRRRRRRRRR..RR..CCC..KK...#',
-  '~~~~~~:MMM..RR..XX..RR..CCC.KK.#',
-  '~~~~~~:MMM..RR..WW..RR..SS..RRR#',
-  '~~~~~~:KK...RR..WW..RR..LL..RR.#',
+  '#....KK..RR..SS..RRRRRRRRLL....#',
+  '#RRRRRRRRRRRRRR..RR.RCCCRRRKK..#',
+  '~~~~~~:MMM..RR..XX..RCCCRR.....#',
+  '~~~~~~:MMM..RRRWW...RR.SSRR.RRR#',
+  '~~~~~~:KK...RRRWW...RR..LLR.RR.#',
   '~~~~~~:KK...RR......RR......RR.#',
   '######RRRRRRRRRRRRRRRRRRRRRRR..#',
-  '#..AA..RR..SS..RR..CC..RR..PPPP#',
-  '#..AA..RR..WW..RR..CC..RR..PPPP#',
-  '#..XX..RR..WW..RR......RR..NN..#',
-  '#..HH..RRRRRRRRRRRRRRRRRR..NN..#',
-  '#..HH......RR..UU..RR..AA......#',
-  '####..RRRRRRRRRRRRRR..RR..###..#',
-  '#..HH..RR..BB..RR..YYYY..TTT...#',
-  '#..HH..RR..BB..RR..YYYY..TTT...#',
-  '#..SS..RR..CC..RR..YYYY..AA....#',
-  '#......RR......RR..TTT..TTT....#',
+  '#..AARRRR..SS..RR..CC..RR..PPPP#',
+  '#..AARRRR..WW..RR..CC..RR..PPPP#',
+  '#..XXRRRR..WW..RR......RRRRNN..#',
+  '#..HHRRRRRRRRRRRRRRRRRRRR..NN..#',
+  '#..HHRR....RR..UU..RR..AA......#',
+  '####..RRRRRRRRRRRRRRRRRRR.###..#',
+  '#..SSRRRR..BB..RR..YYYYRRTTT...#',
+  '#..HHRRRR..BB..RR..YYYYRRTTT...#',
+  '#..KKRRRRRRCC..RR..YYYYRRAA....#',
+  '#....RRRRRR....RR..TTT.RRTT....#',
   '################################',
 ] as const;
 
@@ -1118,7 +1118,7 @@ export function getCurrentBuilding(state: GameState): BuildingConfig | undefined
   return tile?.building ? getBuilding(tile.building) : undefined;
 }
 
-export function validateMapConnectivity(map: Tile[] = createMap(), start = { x: 3, y: 3 }): { valid: boolean; unreachable: Tile[] } {
+export function validateMapConnectivity(map: Tile[] = createMap(), start = { x: 3, y: 4 }): { valid: boolean; unreachable: Tile[] } {
   const queue = [start];
   const seen = new Set<string>([`${start.x}-${start.y}`]);
   while (queue.length) {
@@ -1142,7 +1142,7 @@ export function validateMapConnectivity(map: Tile[] = createMap(), start = { x: 
   const harborTiles = map.filter((tile) => tile.building === 'harbor');
   const stationTiles = map.filter((tile) => tile.building === 'station');
   const harborTouchesWater = harborTiles.some((tile) => neighborKinds(tile, map).some((kind) => kind === 'water' || kind === 'dock'));
-  const stationTouchesRails = stationTiles.some((tile) => neighborKinds(tile, map).some((kind) => kind === 'rails' || kind === 'sidewalk'));
+  const stationTouchesRails = stationTiles.some((tile) => neighborKinds(tile, map).some((kind) => kind === 'rails'));
   const belowTargets = {
     shop: 5,
     hotel: 3,
@@ -2347,7 +2347,7 @@ export function movePlayer(state: GameState, dx: number, dy: number): GameState 
 }
 
 function isWalkable(tile: Tile): boolean {
-  return tile.kind === 'road' || tile.kind === 'sidewalk' || tile.kind === 'dock';
+  return tile.kind === 'road' || tile.kind === 'dock';
 }
 
 function policeCheckRisk(state: GameState): number {

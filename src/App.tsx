@@ -116,9 +116,9 @@ const pixelIcons: Record<MapIconId, string[]> = {
   ],
   weapons: [
     '.......',
-    '.#####.',
-    '###..#.',
-    '..####.',
+    '.######',
+    '#######',
+    '...###.',
     '...##..',
     '..##...',
     '.......',
@@ -160,21 +160,21 @@ const pixelIcons: Record<MapIconId, string[]> = {
     '.......',
   ],
   station: [
-    '..###..',
-    '.#...#.',
-    '.#.#+#.',
-    '.#...#.',
-    '#######',
-    '.=.=.=.',
+    '..#....',
+    '.###...',
+    '#####..',
+    '######.',
+    '.####..',
+    '#.#.#.#',
     '.......',
   ],
   subway: [
-    '.......',
-    '.#...#.',
-    '.#...#.',
-    '.#...#.',
-    '.#...#.',
-    '..###..',
+    '#.....#',
+    '#.....#',
+    '#.....#',
+    '#.....#',
+    '#.....#',
+    '.#####.',
     '.......',
   ],
   harbor: [
@@ -818,7 +818,7 @@ function App() {
                   const building = tile.building ? getBuilding(tile.building) : tile.buildingVisualFor ? getBuilding(tile.buildingVisualFor) : undefined;
                   const playerHere = tile.x === game.position.x && tile.y === game.position.y;
                   const visual = tileVisuals[tile.kind];
-                  const adjacentReachable = Math.abs(tile.x - game.position.x) + Math.abs(tile.y - game.position.y) === 1 && (tile.kind === 'road' || tile.kind === 'sidewalk');
+                  const adjacentReachable = Math.abs(tile.x - game.position.x) + Math.abs(tile.y - game.position.y) === 1 && (tile.kind === 'road' || tile.kind === 'dock');
                   return (
                     <button
                       key={tile.id}
